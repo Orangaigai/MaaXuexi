@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "local-20261018.1"
+VERSION = "local-20261018.2"
 REPORT_PATH = Path("config/last-run.json")
 # Login is a prerequisite. Then usual no-challenge tasks, occasional-challenge tasks
 # by daily cap (10/2/1), and daily quiz last (frequent challenge on this emulator).
@@ -16,9 +16,10 @@ ALIASES = {"登录": "登录", "选读文章": "我要选读文章", "视听学�
 BOUNDARIES = ("登录", "我要选读文章", "我要视听学习", "每日答题", "趣味答题", "订阅", "强国运动", "专项答题", "每周答题", "发表观点", "本地频道")
 
 
-def ordered_tasks(tasks):
+def ordered_tasks(tasks, verification_first=False):
     selected = list(dict.fromkeys(tasks))
-    priority = {name:index for index,name in enumerate(ALIASES)}
+    order = ('登录','趣味答题','每日答题','订阅','发表观点','选读文章','视听学习','本地频道') if verification_first else ALIASES
+    priority = {name:index for index,name in enumerate(order)}
     return sorted(selected, key=lambda name:priority.get(name,len(priority)))
 
 

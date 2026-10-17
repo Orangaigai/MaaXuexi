@@ -1,4 +1,4 @@
-param([switch]$CheckOnly, [switch]$NoBrowser)
+param([switch]$CheckOnly, [switch]$NoBrowser, [switch]$VerificationFirst)
 $ErrorActionPreference = 'Stop'
 $appRoot = Split-Path -Parent $PSScriptRoot
 $baseUrl = 'http://127.0.0.1:8000'
@@ -47,7 +47,9 @@ try {
     $answerTasks = @('\u6bcf\u65e5\u7b54\u9898','\u8da3\u5473\u7b54\u9898','\u53d1\u8868\u89c2\u70b9') | ForEach-Object { ('"'+$_+'"') | ConvertFrom-Json }
     if (@($taskNames | Where-Object { $_ -in $answerTasks }).Count -and !$health.api_key_configured) { throw 'DeepSeek API key is not configured.' }
     $payload = @{tasklist=$taskNames;fast_answer=$false;debug=$false;unattended=$true} | ConvertTo-Json -Compress
-    $result = Invoke-RestMethod ($baseUrl+'/api/start') -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -TimeoutSec 10
+    $startPath = if ($VerificationFirst) { '/api/local/verify-full-flow' } else { '/api/start' }
+    if ($VerificationFirst) { Write-RunLog 'Temporary verification-first acceptance; saved daily plan is unchanged.' }
+    $result = Invoke-RestMethod ($baseUrl+$startPath) -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -TimeoutSec 10
     if ($result.status -ne 'success') { Write-RunLog 'Task start was declined; check the control page.'; exit 1 }
     Write-RunLog ('Submitted '+$taskNames.Count+' selected tasks. API key is not logged.')
     $deadline = (Get-Date).AddMinutes(45)

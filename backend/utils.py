@@ -457,10 +457,10 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             labels.append(detail["label"])
         return list(boxes), list(labels)
 
-    def task(self, tasks, fast_answer=False, debug=False, unattended=False, daily_acceptance=False):
+    def task(self, tasks, fast_answer=False, debug=False, unattended=False, daily_acceptance=False, verification_first=False):
         global DEBUG_MODE
         DEBUG_MODE = debug
-        tasks = ordered_tasks(tasks)
+        tasks = ordered_tasks(tasks,verification_first=verification_first)
         self.last_task_error = None
         self.fast_answer = fast_answer
         self.unattended = unattended
@@ -477,6 +477,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         if isinstance(getattr(self,'ai_resolver',None),AIResolver):
             self.ai_resolver.timing_hook=lambda seconds:record_time(self,'模型请求',seconds)
         self.run_report.update(unattended=unattended)
+        if verification_first:
+            self.run_report.update(verification_first=True)
+            self.send_log('本轮临时先执行验证相关任务，随后自动继续文章、视听与本地；每日默认顺序不变')
         if daily_acceptance:
             self.run_report.update(acceptance_test='daily_fresh_round', new_points_claimed=False)
         current = None

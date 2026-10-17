@@ -198,12 +198,14 @@ def connect_device(device: DeviceModel):
             raise HTTPException(409, '请先中止当前任务。')
         return dict(status='success' if ensure_worker().connect_device(device) else 'failed')
 
-def execute_tasks(tasks, daily_acceptance=False):
+def execute_tasks(tasks, daily_acceptance=False, verification_first=False):
     try:
         worker = app_state.worker
         worker.last_task_error = None
         if daily_acceptance:
             worker.task(tasks.tasklist, tasks.fast_answer, tasks.debug, unattended=False, daily_acceptance=True)
+        elif verification_first:
+            worker.task(tasks.tasklist, tasks.fast_answer, tasks.debug, unattended=tasks.unattended,verification_first=True)
         else:
             worker.task(tasks.tasklist, tasks.fast_answer, tasks.debug, unattended=tasks.unattended)
     except Exception as error:
@@ -226,7 +228,13 @@ def verify_daily_flow(tasks: TaskModel):
         raise HTTPException(422, '单组验收仅支持手动运行每日答题')
     return start_selected(TaskModel(tasklist=['每日答题']), daily_acceptance=True)
 
-def start_selected(tasks: TaskModel, daily_acceptance=False):
+@app.post('/api/local/verify-full-flow')
+def verify_full_flow(tasks: TaskModel):
+    if set(tasks.tasklist)!=set(ALIASES):
+        raise HTTPException(422, '完整流程验收需要保留全部八项任务')
+    return start_selected(tasks,verification_first=True)
+
+def start_selected(tasks: TaskModel, daily_acceptance=False, verification_first=False):
     with app_state.lock:
         worker = ensure_worker()
         if task_running():
@@ -242,7 +250,7 @@ def start_selected(tasks: TaskModel, daily_acceptance=False):
         worker.pause_flag = False
         worker.last_task_error = None
         app_state.current_tasks = tasks.tasklist
-        args = (tasks, True) if daily_acceptance else (tasks,)
+        args = (tasks, True) if daily_acceptance else (tasks,False,True) if verification_first else (tasks,)
         app_state.child_process = threading.Thread(target=execute_tasks, args=args, daemon=True)
         app_state.child_process.start()
         return dict(status='success')
