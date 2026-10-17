@@ -25,14 +25,18 @@ def subscription_scene(records):
     return None
 
 
-def owned_detail(records, name, state='已订阅'):
-    """Only a journalled account's own header may authorize an unfollow click."""
-    if verification_visible(records):
-        return False
-    headers = [r for r in records if re.sub(r'\s+', '',r['text']) == name and 80 <= r['box'][1] < 420]
+def owned_list_button(records, name, state='已订阅'):
+    """Match an exact journalled name to its own right-hand list button."""
+    if not name or subscription_scene(records) != 'mine':
+        return None
+    names = [r for r in records if re.sub(r'\s+', '',r['text']) == name
+             and 90 <= r['box'][0] < 590 and 175 <= r['box'][1] < 1175]
+    if len(names) != 1:
+        return None
+    y = names[0]['box'][1]
     buttons = [r for r in records if r['text'].strip() == state
-               and r['box'][0] >= 420 and 80 <= r['box'][1] < 420]
-    return len(headers) == len(buttons) == 1
+               and r['box'][0] >= 600 and y-8 <= r['box'][1] <= y+65]
+    return buttons[0] if len(buttons) == 1 else None
 
 
 def cancellation_action(records):
@@ -146,6 +150,11 @@ class SubscriptionTasks:
             records = self._sub_records()
             scene = subscription_scene(records)
             if scene == 'mine':
+                if cancellation_action(records) is not None:
+                    # A menu opened outside this cleanup has no recorded owner.
+                    self._sub_label(records,'关闭',top=1000)
+                    return self._sub_wait(lambda rows:subscription_scene(rows)=='mine'
+                                          and cancellation_action(rows) is None)
                 return records
             if scene == 'catalog' or daily_scene(records) == 'score':
                 self._sub_back()
@@ -277,85 +286,137 @@ class SubscriptionTasks:
             return False
         raise TaskIncomplete('验证后非空列表未能唯一定位新增关注，保留记录和页面')
 
+    def _sub_find_owned(self, name):
+        seen_pages = set()
+        for _ in range(20):
+            records = self._sub_records()
+            if subscription_scene(records) != 'mine':
+                raise TaskIncomplete('清理新增订阅时页面已改变，未继续操作')
+            if any(r['text'].strip() == '暂无更多内容' for r in records):
+                self._sleep(1)
+                if any(r['text'].strip() == '暂无更多内容' for r in self._sub_records()):
+                    return None
+            names = [r for r in records if 90 <= r['box'][0] < 590
+                     and 175 <= r['box'][1] < 1175 and re.sub(r'\s+','',r['text']) == name]
+            if len(names) > 1:
+                raise TaskIncomplete('我的订阅出现同名账号，未猜测取消对象')
+            if names:
+                button = self._sub_list_button(records,name)
+                if button is None:
+                    raise TaskIncomplete('新增关注的列表按钮未能唯一对应，保留待取消记录')
+                return button if button['text'].strip()=='已订阅' else None
+            signature = tuple((r['text'],tuple(r['box'])) for r in records if r['box'][1] >= 175)
+            if signature in seen_pages:
+                return None
+            seen_pages.add(signature)
+            if not self.tasker.controller.post_swipe(360,1100,360,400,450).wait().succeeded:
+                raise TaskIncomplete('我的订阅列表滑动失败')
+            self._sleep(.6)
+        raise TaskIncomplete('新增关注未在可扫描范围找到，保留待取消记录')
+
+    def _sub_list_button(self, records, name):
+        button = owned_list_button(records,name) or owned_list_button(records,name,'订阅')
+        if button is not None:
+            return button
+        if subscription_scene(records) != 'mine':
+            return None
+        names = [r for r in records if re.sub(r'\s+','',r['text']) == name
+                 and 90 <= r['box'][0] < 590 and 175 <= r['box'][1] < 1175]
+        if len(names) != 1:
+            return None
+        self._check_active();self._guard_verification(records)
+        if not self._app_in_foreground():
+            raise TaskIncomplete('识别订阅状态时应用不在前台')
+        task='订阅列表状态'
+        detail=self.tasker.post_task(task,{task:{
+            'recognition':'OCR','expected':['^(?:已)?订阅$'],
+            'roi':[615,names[0]['box'][1]+12,72,60],
+            'action':'DoNothing','timeout':2000,'pre_delay':0,'post_delay':0,
+        }}).wait().get()
+        if detail.status.failed or not detail.nodes:
+            return None
+        local=[dict(text=r.text,box=list(r.box)) for r in getattr(detail.nodes[0].recognition,'all_results',[])]
+        isolated=names+local+[r for r in records if r['text'].strip() in ('我的订阅','添加')]
+        return owned_list_button(isolated,name) or owned_list_button(isolated,name,'订阅')
+
+    def _sub_row_cancelled(self, records, name):
+        if subscription_scene(records) != 'mine' or cancellation_action(records) is not None:
+            return False
+        names=[r for r in records if 90 <= r['box'][0] < 590 and 175 <= r['box'][1] < 1175
+               and re.sub(r'\s+','',r['text'])==name]
+        if not names:
+            return True
+        button=self._sub_list_button(records,name)
+        return button is not None and button['text'].strip()=='订阅'
+
     def _sub_cleanup(self, store):
         """Look up owned attempts by full name in My subscriptions, never cancel all."""
         pending = store.pending()
         if not pending:
             return
         self.send_log(f'正在我的订阅核对并清理 {len(pending)} 项本机新增关注')
-        records = self._sub_mine()
+        self._sub_mine()
         # Wait for the freshly opened list, not the previous cached empty frame.
         self._sleep(2)
-        records = self._sub_records()
-        for attempt in pending:
-            # Each lookup starts from a newly opened list, including after a prior scan.
-            self._sub_back()
-            records = self._sub_mine()
-            self._sleep(2)
-            found = None
-            ended = False
-            seen_pages = set()
-            for _ in range(20):
-                records = self._sub_records()
-                if subscription_scene(records) != 'mine':
-                    raise TaskIncomplete('清理新增订阅时页面已改变，未继续操作')
-                if any(r['text'].strip() == '暂无更多内容' for r in records):
-                    self._sleep(1)
-                    confirm = self._sub_records()
-                    if any(r['text'].strip() == '暂无更多内容' for r in confirm):
-                        ended = True
-                        break
-                names = [r for r in records if 175 <= r['box'][1] < 1175
-                         and re.sub(r'\s+','',r['text']) == attempt['name']]
-                if len(names) > 1:
-                    raise TaskIncomplete('我的订阅出现同名账号，已保留关注，未猜测取消对象')
-                if names:
-                    found = names[0]
-                    break
-                signature = tuple((r['text'],tuple(r['box'])) for r in records if r['box'][1] >= 175)
-                if signature in seen_pages:
-                    ended = True
-                    break
-                seen_pages.add(signature)
-                self.tasker.controller.post_swipe(360,1100,360,400,450).wait()
-                self._sleep(.6)
+        cancelled = []
+        while pending:
+            records = self._sub_records()
+            visible = [(owned_list_button(records,a['name']),a) for a in pending]
+            visible = [(button,a) for button,a in visible if button is not None]
+            if visible:
+                found,attempt = min(visible,key=lambda pair:pair[0]['box'][1])
+            else:
+                attempt = pending[0]
+                found = self._sub_find_owned(attempt['name'])
+            pending.remove(attempt)
             if found is None:
-                if not ended:
-                    raise TaskIncomplete('新增关注未在可扫描范围找到，保留待清理记录')
-                if any(r['text'].strip() == '暂无更多内容' for r in self._sub_records()):
-                    self._sub_evidence('cleanup-absent-'+attempt['id'][:12],self._sub_records())
-                    store.cleaned(attempt['id'])
-                    self.send_log('已核实我的订阅中没有：'+attempt['name'])
-                    continue
-                raise TaskIncomplete('非空订阅列表未能定位待清理账号，保留历史，不猜测取消')
-            self._sub_cleanup_name = attempt['name']
+                self._sub_evidence('cleanup-absent-'+attempt['id'][:12],self._sub_records())
+                store.cleaned(attempt['id'])
+                self.send_log('已核实我的订阅中没有：'+attempt['name'])
+                continue
+            # Stay on My subscriptions; do not enter the publisher's content page.
             self._sub_click(found)
-            detail = self._sub_wait(lambda rows:owned_detail(rows,attempt['name']))
-            self._sub_label(detail,'已订阅',left=420,top=80,bottom=420)
-            dialog = self._sub_wait(lambda rows:owned_detail(rows,attempt['name'],'订阅')
-                                    or cancellation_action(rows) is not None)
-            action=cancellation_action(dialog)
-            if action is not None:
-                self._sub_click(action)
-            result = self._sub_wait(lambda rows:owned_detail(rows,attempt['name'],'订阅'))
+            dialog = self._sub_wait(lambda rows:cancellation_action(rows) is not None)
+            self._sub_click(cancellation_action(dialog))
+            result = self._sub_wait(lambda rows:self._sub_row_cancelled(rows,attempt['name']))
             self._sub_evidence('cancelled-'+attempt['id'][:12],result)
-            self._sub_back()
-            self._sub_wait(lambda rows:subscription_scene(rows) == 'mine')
-            # Reopen the list once so a stale locally displayed button is not proof.
-            self._sub_back()
-            self._sub_mine()
-            self._sleep(2)
-            remaining = self._sub_records()
-            if any(re.sub(r'\s+','',r['text']) == attempt['name'] for r in remaining):
-                raise TaskIncomplete('重新加载后仍有该订阅，未将取消记为完成')
+            cancelled.append(attempt)
+            self.send_log('已在列表取消：'+attempt['name']+'；继续处理下一项')
+        if not cancelled:
+            return
+        # One reload for the whole batch, rather than entering/exiting per account.
+        self._sub_back()
+        self._sub_mine()
+        self._sleep(2)
+        self._sub_confirm_removed({a['name'] for a in cancelled})
+        for attempt in cancelled:
             count = store.cleaned(attempt['id'],completed=True)
-            self._sub_cleanup_name = None
             self.send_log(f"已取消本机新增订阅：{attempt['name']}；累计完整操作 {count} 次")
+
+    def _sub_confirm_removed(self, names):
+        seen_pages = set()
+        for _ in range(20):
+            records = self._sub_records()
+            if subscription_scene(records) != 'mine':
+                raise TaskIncomplete('统一核对取消结果时未确认我的订阅')
+            present={re.sub(r'\s+','',r['text']) for r in records
+                     if 90 <= r['box'][0] < 590 and 175 <= r['box'][1] < 1175} & names
+            if any(not self._sub_row_cancelled(records,name) for name in present):
+                raise TaskIncomplete('统一刷新后仍有待取消账号，保留记录，未增加完成次数')
+            if any(r['text'].strip() == '暂无更多内容' for r in records):
+                return
+            signature = tuple((r['text'],tuple(r['box'])) for r in records if r['box'][1] >= 175)
+            if signature in seen_pages:
+                return
+            seen_pages.add(signature)
+            if not self.tasker.controller.post_swipe(360,1100,360,400,450).wait().succeeded:
+                raise TaskIncomplete('统一核对订阅列表滑动失败')
+            self._sleep(.6)
+        raise TaskIncomplete('统一核对超出可扫描范围，保留待取消记录')
 
     def subscribe(self):
         store = SubscriptionStore()
         self._sub_verification_seen = False
-        self._sub_cleanup_name = None
         progress = store.progress()
         self._sub_category_cursor = progress['category_cursor'] % len(CATEGORIES)
         self._sub_scan_observed = 0

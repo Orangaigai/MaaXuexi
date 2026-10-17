@@ -30,7 +30,7 @@ from daily_flow import verification_visible, completion_box, daily_scene, finish
 from home_navigation import HomeNavigation
 from content_tasks import ContentTasks, is_audio_collection
 from score_navigation import ScoreNavigation
-from subscription_tasks import SubscriptionTasks, subscription_scene, owned_detail
+from subscription_tasks import SubscriptionTasks, subscription_scene
 from subscription_store import SubscriptionStore
 
 
@@ -717,9 +717,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         competition = (detect_fun_mode(records, True) in ('四人赛', '双人对战')
                        or race_finished(records) or race_match_expired(records)
                        or bool(race_network_error(records)))
-        ready = bool(normal or question or content or competition or subscription_scene(records)
-                     or owned_detail(records,getattr(self,'_sub_cleanup_name',None))
-                     or owned_detail(records,getattr(self,'_sub_cleanup_name',None),'订阅'))
+        ready = bool(normal or question or content or competition or subscription_scene(records))
         self._owner_resume_stable = getattr(self, '_owner_resume_stable', 0) + 1 if ready else 0
         if self._owner_resume_stable < 2 or not self._app_in_foreground():
             return False

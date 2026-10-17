@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
 from subscription_store import SubscriptionStore, account_key
-from subscription_tasks import SubscriptionTasks, subscription_accounts, subscription_scene, owned_detail, category_selected, cancellation_action, MAX_ATTEMPTS
+from subscription_tasks import SubscriptionTasks, subscription_accounts, subscription_scene, owned_list_button, category_selected, cancellation_action, MAX_ATTEMPTS
 from task_support import RunReport, TaskIncomplete, HumanRequired, ordered_tasks, parse_score_rows
 import task_support
 
@@ -89,6 +89,36 @@ class HistoryTests(unittest.TestCase):
 
 
 class RecognitionTests(unittest.TestCase):
+    def test_cancelled_row_can_remain_visible_with_subscribe_button(self):
+        rows=json.loads((FIXTURES/'mine-merged-button.json').read_text('utf-8'))
+        value=SubscriptionTasks()
+        self.assertTrue(value._sub_row_cancelled(rows,'复旦大学'))
+        self.assertIsNone(owned_list_button(rows,'复旦大学'))
+        self.assertIsNotNone(owned_list_button(rows,'复旦大学','订阅'))
+
+    def test_description_merged_with_button_uses_only_the_right_hand_row_crop(self):
+        from types import SimpleNamespace
+        rows=json.loads((FIXTURES/'mine-merged-button.json').read_text('utf-8'))
+        self.assertIsNone(owned_list_button(rows,'清华大学'))
+        value=SubscriptionTasks();value.tasker=Mock()
+        value._check_active=Mock();value._guard_verification=Mock();value._app_in_foreground=Mock(return_value=True)
+        value.tasker.post_task.return_value.wait.return_value.get.return_value=SimpleNamespace(
+            status=SimpleNamespace(failed=False),nodes=[SimpleNamespace(recognition=SimpleNamespace(
+                all_results=[SimpleNamespace(text='已订阅',box=[622,347,75,26])]))])
+        self.assertEqual(value._sub_list_button(rows,'清华大学')['text'],'已订阅')
+        task,override=value.tasker.post_task.call_args.args
+        self.assertEqual(override[task]['roi'],[615,320,72,60])
+        self.assertEqual(override[task]['action'],'DoNothing')
+        value.tasker.controller.post_click.assert_not_called()
+
+    def test_observed_list_pairs_each_owned_name_with_its_own_button(self):
+        rows=json.loads((FIXTURES/'mine-populated.json').read_text('utf-8'))
+        for name,y in [('北京大学',223),('浙大学术期刊',347),('1905电影网',480),
+                       ('人民日报',602),('中国教育出版网',714),('退役军人之家',824)]:
+            self.assertEqual(owned_list_button(rows,name)['box'][1],y)
+        self.assertIsNone(owned_list_button(rows,'退役军人'))
+        self.assertIsNone(owned_list_button(rows,None))
+
     def test_cancel_confirmation_prefers_action_button_over_dialog_title(self):
         title=dict(text='取消订阅',box=[280,480,150,35])
         confirm=dict(text='确认',box=[450,720,80,35])
@@ -133,11 +163,12 @@ class RecognitionTests(unittest.TestCase):
         self.assertEqual(ordered_tasks(['每日答题','趣味答题','订阅','登录']),['登录','订阅','趣味答题','每日答题'])
 
     def test_another_accounts_button_does_not_authorize_cancel(self):
-        rows=[dict(text='原有关注',box=[215,140,120,25]),dict(text='已订阅',box=[550,150,90,30])]
-        self.assertFalse(owned_detail(rows,'本机新增'))
-        self.assertTrue(owned_detail(rows,'原有关注'))
+        rows=[dict(text='我的订阅',box=[307,55,103,30]),dict(text='添加',box=[641,53,58,34]),
+              dict(text='原有关注',box=[105,200,120,25]),dict(text='已订阅',box=[622,223,75,26])]
+        self.assertIsNone(owned_list_button(rows,'本机新增'))
+        self.assertIsNotNone(owned_list_button(rows,'原有关注'))
         rows.append(dict(text='访问验证',box=[300,134,110,31]))
-        self.assertFalse(owned_detail(rows,'原有关注'))
+        self.assertIsNone(owned_list_button(rows,'原有关注'))
 
 
 class FlowTests(unittest.TestCase):
@@ -230,9 +261,10 @@ class FlowTests(unittest.TestCase):
         del value._sub_cleanup
         value._sub_mine=Mock(return_value=records);value._sub_records=Mock(return_value=records)
         value._sub_back=Mock();value._sleep=Mock();value.tasker=Mock();value._sub_click=Mock()
-        with self.assertRaises(TaskIncomplete):value._sub_cleanup(self.store)
+        value._sub_cleanup(self.store)
         value._sub_click.assert_not_called()
-        self.assertEqual(len(self.store.pending()),1)
+        self.assertEqual(self.store.pending(),[])
+        self.assertEqual(self.store.stats()['completed_operations'],0)
 
     def test_duplicate_names_are_not_cancelled(self):
         value=self.value;self.store.begin('同名')
@@ -333,11 +365,10 @@ class FlowTests(unittest.TestCase):
         with self.assertRaises(HumanRequired):
             self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
 
-    def test_owned_subscription_detail_resumes_after_verification_without_browser_continue(self):
+    def test_my_subscription_list_resumes_after_verification_without_browser_continue(self):
         from test_optimization import worker
-        value=worker();value._sub_cleanup_name='频道'
-        value._screen_records=Mock(return_value=[dict(text='频道',box=[215,140,120,25]),
-                                                dict(text='已订阅',box=[550,150,90,30])])
+        value=worker()
+        value._screen_records=Mock(return_value=json.loads((FIXTURES/'mine-populated.json').read_text('utf-8')))
         value._captcha_present=Mock(return_value=False)
         self.assertFalse(value._owner_resume_ready())
         self.assertTrue(value._owner_resume_ready())
@@ -366,11 +397,64 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(override[name]['expected'],['^待订阅$'])
         self.assertEqual(override[name]['timeout'],8000)
 
-    def test_unfollowed_owned_detail_can_resume_after_verification(self):
-        from test_optimization import worker
-        value=worker();value._sub_cleanup_name='频道'
-        value._screen_records=Mock(return_value=[dict(text='频道',box=[215,140,120,25]),
-                                                dict(text='订阅',box=[550,150,90,30])])
-        value._captcha_present=Mock(return_value=False)
-        self.assertFalse(value._owner_resume_ready())
-        self.assertTrue(value._owner_resume_ready())
+    def test_cancel_uses_right_hand_list_button_and_counts_after_reload(self):
+        value=self.value;self.store.begin('本机新增')
+        rows=[dict(text='我的订阅',box=[307,55,103,30]),dict(text='添加',box=[641,53,58,34])]
+        button=dict(text='已订阅',box=[622,223,75,26])
+        cancel=dict(text='取消订阅',box=[280,1090,160,35])
+        del value._sub_cleanup
+        value._sub_mine=Mock(return_value=rows);value._sub_records=Mock(return_value=rows)
+        value._sub_back=Mock();value._sleep=Mock();value._sub_click=Mock();value._sub_evidence=Mock()
+        value._sub_find_owned=Mock(side_effect=[button,None])
+        value._sub_confirm_removed=Mock()
+        value._sub_wait=Mock(side_effect=[[cancel],rows])
+        value._sub_cleanup(self.store)
+        self.assertEqual(value._sub_click.call_args_list[0].args[0],button)
+        self.assertEqual(value._sub_click.call_args_list[1].args[0],cancel)
+        self.assertEqual(self.store.stats()['completed_operations'],1)
+        self.assertEqual(self.store.pending(),[])
+        value._sub_confirm_removed.assert_called_once_with({'本机新增'})
+
+    def test_batch_cancels_top_visible_owned_row_without_entering_or_leaving_per_item(self):
+        value=self.value;self.store.begin('乙');self.store.begin('甲')
+        base=[dict(text='我的订阅',box=[307,55,103,30]),dict(text='添加',box=[641,53,58,34])]
+        first=dict(text='已订阅',box=[622,223,75,26]);second=dict(text='已订阅',box=[622,347,75,26])
+        both=base+[dict(text='甲',box=[105,201,100,30]),first,
+                   dict(text='乙',box=[105,313,100,30]),second]
+        one=base+[dict(text='乙',box=[105,201,100,30]),first]
+        cancel=dict(text='取消订阅',box=[307,1133,103,31])
+        del value._sub_cleanup
+        value._sub_mine=Mock();value._sub_back=Mock();value._sleep=Mock()
+        value._sub_records=Mock(side_effect=[both,one]);value._sub_click=Mock();value._sub_evidence=Mock()
+        value._sub_wait=Mock(side_effect=[[cancel],one,[cancel],base])
+        value._sub_find_owned=Mock();value._sub_confirm_removed=Mock()
+        value._sub_cleanup(self.store)
+        self.assertEqual([call.args[0] for call in value._sub_click.call_args_list],[first,cancel,first,cancel])
+        value._sub_back.assert_called_once()
+        self.assertEqual(value._sub_mine.call_count,2)
+        value._sub_find_owned.assert_not_called()
+        value._sub_confirm_removed.assert_called_once_with({'甲','乙'})
+        self.assertEqual(self.store.stats()['completed_operations'],2)
+
+    def test_batch_keeps_counts_pending_if_final_list_still_contains_a_removed_account(self):
+        value=self.value;self.store.begin('本机新增')
+        base=[dict(text='我的订阅',box=[307,55,103,30]),dict(text='添加',box=[641,53,58,34])]
+        button=dict(text='已订阅',box=[622,223,75,26]);cancel=dict(text='取消订阅',box=[307,1133,103,31])
+        rows=base+[dict(text='本机新增',box=[105,201,150,30]),button]
+        del value._sub_cleanup
+        value._sub_mine=Mock();value._sub_back=Mock();value._sleep=Mock()
+        value._sub_records=Mock(return_value=rows);value._sub_click=Mock();value._sub_evidence=Mock()
+        value._sub_wait=Mock(side_effect=[[cancel],base])
+        with self.assertRaises(TaskIncomplete):value._sub_cleanup(self.store)
+        self.assertEqual(self.store.stats()['completed_operations'],0)
+        self.assertEqual(len(self.store.pending()),1)
+
+    def test_failed_cancel_keeps_pending_and_does_not_increment(self):
+        value=self.value;self.store.begin('本机新增')
+        del value._sub_cleanup
+        value._sub_mine=Mock();value._sub_records=Mock(return_value=[]);value._sub_back=Mock();value._sleep=Mock()
+        value._sub_find_owned=Mock(return_value=dict(text='已订阅',box=[622,223,75,26]))
+        value._sub_click=Mock();value._sub_wait=Mock(side_effect=TaskIncomplete('menu missing'))
+        with self.assertRaises(TaskIncomplete):value._sub_cleanup(self.store)
+        self.assertEqual(self.store.stats()['completed_operations'],0)
+        self.assertEqual(len(self.store.pending()),1)

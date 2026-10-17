@@ -48,6 +48,8 @@ Current checks and actual live scope: docs/收尾检查与验收.md and config/v
 Historical source ledger, reports and screenshots: docs/历史记录位置.txt.
 Verification remains owner-only; scheduled runs observe owner action for up to 600 seconds, then end needs_human on timeout.
 
+2026-10-17 subscription cleanup: use the observed My subscriptions right-hand 已订阅 button and bottom-sheet 取消订阅 action directly. Cancel the top visible journalled account, stay on the list for subsequent accounts, and reload once for the whole batch before counting completed follow/unfollow operations. Remove publisher-detail navigation and its unused owner-resume recognizer. Live scoring reached 2/2 in d163e717e93e; six direct-list cancellations completed in 525f49d870c1. Batch acceptance is recorded separately in docs/订阅流程与验收.md. Isolate the right-hand list button OCR when merged with descriptions; recognize cancelled rows that remain temporarily visible with a 订阅 button. 383 offline checks pass.
+
 Live follow-up: support observed video_big cards, keep verified playback on missing progress, allow recognized already-opened videos when points remain, reset old match error flags, accept native Click result list coordinates. Offline checks: 327. Live results remain separately documented.
 
 2026-10-17 verification messages: unattended runs explicitly end and require a new manual start; only a live manual observer promises automatic continuation. Show the detected fun mode and restart action on the control page. 329 offline checks pass; no new match was started.
