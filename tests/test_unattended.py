@@ -90,11 +90,15 @@ class UnattendedTests(unittest.TestCase):
         value.tasker.controller.post_start_app.assert_not_called()
 
     def test_score_verification_does_not_swipe_a_challenge(self):
+        import numpy as np
         value = self.guarded_worker()
         value._enter_learning_score = Mock(return_value=True)
         detail = job().get.return_value
         detail.nodes[0].recognition.all_results = [SimpleNamespace(text='访问验证', box=[200, 300, 150, 30])]
         value.tasker.post_task.return_value.get.return_value = detail
+        value.tasker.controller.post_screencap.return_value.wait.return_value.get.return_value=np.zeros((1280,720,3),np.uint8)
+        value.tasker.post_recognition=Mock()
+        value.tasker.post_recognition.return_value.wait.return_value.get.return_value=detail
         with patch('utils.plyer.notification.notify'):
             with self.assertRaises(task_support.HumanRequired):
                 value.read_learning_score(['选读文章'])

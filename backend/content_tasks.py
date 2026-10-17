@@ -2,7 +2,7 @@
 import re
 from random import randint
 import numpy as np
-from task_support import HumanRequired, TaskIncomplete, parse_video_progress
+from task_support import HumanRequired, TaskIncomplete, parse_video_progress, is_complete
 
 
 def is_audio_collection(text):
@@ -39,10 +39,37 @@ class ContentTasks:
             return ""
         return re.sub(r"\s+", "", "".join(item.text for item in result.nodes[0].recognition.all_results))
 
-    def read_article(self):
+    def read_article(self, before_score=None):
+        """Read a bounded batch, then let the actual score decide whether to stop."""
+        score=before_score
+        self._article_seen=set()
+        metrics=dict(batches=[],articles_opened=0)
+        for batch in range(3):
+            if is_complete(score):return score
+            remaining=(score['maximum']-score['value']) if isinstance(score,dict) else 12
+            # A combined score does not reveal whether count or minutes are missing.
+            # Use it only to choose a modest batch; never treat it as a count proof.
+            size=min(6,max(1,(remaining+1)//2)) if batch==0 else min(2,max(1,remaining))
+            if batch:self._reset_home()
+            self.send_log(f'文章：本批最多{size}篇，结束后核分，满分立即停止')
+            self._read_article_batch(size)
+            score=self.read_learning_score(['选读文章']).get('选读文章')
+            metrics['articles_opened']=len(self._article_seen)
+            metrics['batches'].append(dict(size=size,score=score))
+            report=getattr(self,'run_report',None)
+            if report and '选读文章' in report.snapshot()['tasks']:
+                report.task('选读文章',metrics=metrics,after=score)
+            if not score:raise TaskIncomplete('文章批次结束后未能读取实际积分')
+            if is_complete(score):
+                self.send_log('文章积分已满，停止阅读，不继续累计固定等待时间')
+                return score
+        self.send_log('文章三批已结束，保留实际积分，继续其他任务')
+        return score
+
+    def _read_article_batch(self, article_limit):
         self.send_log("开始任务：选读文章")
         read_count = 0
-        reading_time = 0
+        completed = 0
         rejected_cards = set()
         recoveries = 0
         def recover():
@@ -62,7 +89,7 @@ class ContentTasks:
             raise RuntimeError("Home page was not recognized")
         self._sleep(randint(4, 5))
         empty_rounds = 0
-        while reading_time < 400:
+        while completed < article_limit:
             if self.stop_flag:
                 return
             if not self._content_page_ready("feed"):
@@ -103,7 +130,7 @@ class ContentTasks:
                 if not self._has_unread_text(article_list[i]):
                     continue
                 signature = self._article_card_text(boxes[i])
-                if (len(signature) < 4 or signature in rejected_cards or
+                if (len(signature) < 4 or signature in rejected_cards or signature in self._article_seen or
                         is_audio_collection(signature) or
                         any(text in signature for text in ("全国学习平台", "进入学习强国PC版", "待订阅", "立即订阅"))):
                     continue
@@ -120,21 +147,26 @@ class ContentTasks:
                     if not self._content_page_ready("feed"):
                         recover()
                     break
-                for _ in range(5):
+                confirmed=True
+                for _ in range(3):
                     if self.stop_flag:
                         return
                     if not self._content_page_ready("article"):
+                        confirmed=False
                         recover()
                         break
                     self.tasker.controller.post_swipe(
                         350, 1000, 350, 400, 600,
                     ).wait()
-                    t = randint(8, 10)
+                    t = randint(20, 22)
                     self._sleep(t)
-                    reading_time += t
                 self._sleep(1)
                 if self._content_page_ready("article"):
                     self.tasker.post_task("返回").wait()
+                    if confirmed:
+                        completed+=1
+                        self._article_seen.add(signature)
+                if completed >= article_limit:return
                 self._sleep(randint(3, 5))
                 break
             if not self._content_page_ready("feed"):

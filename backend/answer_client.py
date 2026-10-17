@@ -9,6 +9,7 @@ from io import BytesIO
 import httpx
 import numpy as np
 from PIL import Image
+from question_visual import text_needs_image
 
 
 class AIResolver:
@@ -164,7 +165,7 @@ class AIResolver:
 
     @staticmethod
     def question_needs_image(question):
-        return bool(re.search(r'如图|图中|下图|图示|图案|图片|图标|图像|示意图|漫画|下表|表中|图表|所示|这幅|此图|照片|标志|符号', question or ''))
+        return text_needs_image(question)
 
     @staticmethod
     def timed_choice_instruction():
@@ -173,12 +174,16 @@ class AIResolver:
             '避免把熟悉的相关事实当作题目所问。判断题按完整陈述判断，不能只看关键词。'
             '格式：{"index":0,"uncertain":false}。')
 
-    def resolve_fun_choice(self, imgs, options, question=None):
+    def resolve_fun_choice(self, imgs, options, question=None, visual_required=False):
         if not 2 <= len(options) <= 6:
             self.last_error = 'invalid_fun_options'
             return None
         text_ready = isinstance(question,str) and len(question.strip()) >= 5
-        answer = self._resolve(imgs if not text_ready or self.question_needs_image(question) else [],
+        needs_image=visual_required or not text_ready or self.question_needs_image(question)
+        if needs_image and not imgs:
+            self.last_error='missing_visual_evidence'
+            return None
+        answer = self._resolve(imgs if needs_image else [],
             self.timed_choice_instruction() + ('' if text_ready else
                 '截图选项没有字母，选项编号与文字：'+json.dumps(dict(enumerate(options)),ensure_ascii=False)),
             'index',time_limit=6,thinking=False,
@@ -202,11 +207,14 @@ class AIResolver:
             return None
         return [x.strip() for x in result]
 
-    def resolve_race_choice(self, imgs, options, question):
+    def resolve_race_choice(self, imgs, options, question, visual_required=False):
         if not 2 <= len(options) <= 4 or not isinstance(question,str) or len(question)<5:
             self.last_error = 'invalid_race_question'
             return None
-        needs_image = self.question_needs_image(question)
+        needs_image = visual_required or self.question_needs_image(question)
+        if needs_image and not imgs:
+            self.last_error='missing_visual_evidence'
+            return None
         answer = self._resolve(imgs if needs_image else [],
             self.timed_choice_instruction(),
             'index',time_limit=4,thinking=False,

@@ -25,7 +25,8 @@ from datetime import datetime
 from pathlib import Path
 from device_support import online, prepare_emulator
 from fun_challenge import FunChallenge
-from daily_hints import question_from_records, exact_hint_choice
+from daily_hints import question_from_records, exact_hint_choice, exact_hint_parts
+from screen_reading import read_screen
 from daily_flow import verification_visible, completion_box, daily_scene, finish_daily_quiz, resume_ready, profile_page, final_submission_evidence, acceptance_ready
 from home_navigation import HomeNavigation
 from content_tasks import ContentTasks, is_audio_collection
@@ -514,7 +515,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                         self._reset_home()
                     self.run_report.update(phase="正在执行：" + current)
                     if current == "选读文章":
-                        self.read_article()
+                        article_score = self.read_article(before.get(current))
                     elif current == "视听学习":
                         score = before.get(current)
                         remaining = score["maximum"] - score["value"] if score else 12
@@ -539,7 +540,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                         self.run_report.task(current, acceptance_flow_verified=True)
                     self.send_log('订阅流程结束，积分已核实，新增关注已清理' if current == '订阅'
                                   else current + "流程结束，正在核实积分")
-                    after = (subscription_score if current == '订阅' else local_score if current == '本地频道'
+                    after = (article_score if current == '选读文章' and isinstance(article_score,dict)
+                             else subscription_score if current == '订阅' else local_score if current == '本地频道'
                              else comment_score if current == '发表观点'
                              else self.read_learning_score([current]).get(current))
                     if current == "视听学习" and after and not is_complete(after):
@@ -881,17 +883,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         self._check_active()
         started = time.monotonic()
         self._last_screen_read_started = started
-        detail = self.tasker.post_task("本机积分入口OCR", {"本机积分入口OCR": {
-            "recognition":"OCR", "roi":[10,35,700,1205], "action":"DoNothing", "timeout":1200,
-            "pre_delay":0, "post_delay":0
-        }}).wait().get()
+        records = read_screen(self)
         self._last_screen_read_seconds = time.monotonic()-started
-        if detail is None:
-            self.connected=False
-            raise TaskIncomplete('截图控制器未就绪或模拟器已断开，请重新执行以连接设备')
-        if detail.status.failed or not detail.nodes:
-            return []
-        return [dict(text=x.text,box=list(x.box)) for x in getattr(detail.nodes[0].recognition,'all_results',[])]
+        return records
 
     def _open_daily_quiz(self):
         # The score WebView can route a click to another task on this device.
@@ -1362,7 +1356,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         self._sleep(0.5)
         img_list.append(self.tasker.controller.post_screencap().wait().get())
         red_texts = []
-        if self.fast_answer or question_type in ('填空题','单选题','多选题'):
+        if self.fast_answer or question_type in ('填空题','点选填空题','单选题','多选题'):
             red_texts = self._get_red_texts()
         hint_close = self.tasker.post_task("关闭提示").wait().get()
         if hint_close.status.failed:
@@ -1384,9 +1378,14 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         if hinted is not None:
             self.send_log('每日答题：提示原文已严格匹配选项，无需请求DeepSeek')
             return hinted, True
+        if question_type == '点选填空题' and red_texts:
+            parts=exact_hint_parts(red_texts,self._scan_click_options())
+            if parts is not None:
+                self.send_log('点选填空：提示原文已完整匹配唯一顺序，无需请求DeepSeek')
+                return parts,True
         fast_answer = self._fast_try_answer(
             question_type, options, red_texts, blank_num
-        ) if self.fast_answer else None
+        ) if self.fast_answer and question_type != '点选填空题' else None
         if fast_answer is not None:
             return fast_answer, True
         if question_type == "填空题" and red_texts:
@@ -1479,6 +1478,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             return True
         if question_type == "点选填空题":
             if from_fast:
+                if isinstance(answer,list):
+                    self.send_log('点选填空：按提示匹配顺序选择')
+                    return self._click_text_answers(answer)
                 return self._fast_click_blanks(answer)
             answers = (
                 answer

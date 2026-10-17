@@ -1,4 +1,4 @@
-MaaXuexi local revision local-20261017.19 (verification-aware task order)
+MaaXuexi local revision local-20261017.20 (article progress, strict click hints and complete-frame OCR)
 Upstream: https://github.com/ravizhan/MaaXuexi
 Base version: v1.7.1
 Pinned upstream commit: ff6a0d5a811c5fc987a0c0ae77ea9abaf55fa073
@@ -27,6 +27,8 @@ Retained functions:
 - Score verification, full-score skipping, bounded network retry and owner-only verification.
 
 Module responsibilities:
+screen_reading.py: fresh captures, exact-frame OCR reuse, blank-edge-only ROI trimming.
+question_visual.py: conservative non-text visual evidence and per-question picture freshness.
 utils.py: worker state, task execution, device connection and daily question preparation.
 content_tasks.py: article/video execution and actual playback progress.
 score_navigation.py: fresh first score entry, list navigation and score reading.
@@ -79,3 +81,8 @@ Eight-task daily plan enabled. Article attempt history avoids repeated comments 
 Move fun quiz before subscriptions/comments within the occasional-challenge group; daily quiz remains last.
 Groups reflect local observations and upstream emulator reports, not mandatory/zero verification guarantees.
 Continue bounded Android boot readiness checks after transient ADB connect/getprop timeouts.
+
+.20: Bounded article batches followed by real scores; strict ordered hint segmentation for click-fill in normal mode.
+Fresh-image native OCR, exact complete-frame reuse, blank-border-only crops; full screenshot for visually indicated questions.
+454 offline regressions, 13 native OCR replay images and one real article route accepted.
+Full-score eight-task run 2455f603017b completed; no new quiz accuracy or new points claimed.

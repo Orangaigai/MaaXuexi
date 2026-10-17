@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 from task_support import TaskIncomplete,HumanRequired
+from question_visual import visual_evidence, visual_identity
 
 
 def quiz_identity(value):
@@ -229,16 +230,19 @@ def race_snapshot(records,image=None,mode=None):
     normalize = quiz_identity
     key = hashlib.sha256('|'.join(normalize(v) for v in
         [number,question]+[r['text'] for r in choices]).encode()).hexdigest()
-    return dict(key=key, question=question, question_id=number+'|'+normalize(question), options=choices,
+    visual,area=visual_evidence(image,records,choices,question)
+    picture_key=visual_identity(image,area) if visual and area is not None else None
+    return dict(key=key, question=question, visual_required=visual,visual_area=area,
+                visual_key=picture_key,question_id=number+'|'+normalize(question), options=choices,
                 crop=[20, max(120,min(r['box'][1] for r in question_rows)-15),700,
                       min(1200,choices[-1]['box'][1]+150)])
 
 
 class FourPlayerQuiz:
-    def _resolve_race_timed(self,image,options,question,timing):
+    def _resolve_race_timed(self,image,options,question,timing,visual_required=False):
         started = time.monotonic()
         try:
-            return self.ai_resolver.resolve_race_choice([image],options,question)
+            return self.ai_resolver.resolve_race_choice([image],options,question,visual_required=visual_required)
         finally:
             timing.update(model_seconds=time.monotonic()-started,returned_at=time.monotonic())
 
@@ -477,7 +481,8 @@ class FourPlayerQuiz:
                         answer = pending['future'].result()
                         elapsed = time.monotonic()-pending['started']
                         metrics['model_seconds'].append(round(pending['timing'].get('model_seconds',elapsed),3))
-                        if current is None or current['key'] != pending['key'] or elapsed > 6:
+                        if (current is None or current['key'] != pending['key'] or elapsed > 6
+                                or current.get('visual_key') != pending.get('visual_key')):
                             decision='discarded'
                             metrics['discarded_answers'] += 1
                             self.send_log('对战：题面已切换或答案超时，丢弃旧答案')
@@ -500,25 +505,25 @@ class FourPlayerQuiz:
                         pending = None
                     self._sleep(0.05)
                     continue
-                key = current['key'] if current else None
+                key = current['key']+'|'+(current.get('visual_key') or '') if current else None
                 same_question = current and any(current['question_id'].startswith(old) for old in attempted_questions)
                 if current and key not in attempted and not same_question:
                     if metrics['model_calls'] >= 30:
                         raise TaskIncomplete('对战：达到30题模型请求上限，停止本轮')
                     attempted.add(key)
                     image = self.tasker.controller.cached_image.copy()
-                    x1,y1,x2,y2 = current['crop']
-                    image = image[y1:y2,x1:x2]
+                    # The text route sends no image; visual questions retain the full frame.
                     metrics['model_calls'] += 1
                     if report and '趣味答题' in report.snapshot()['tasks']:
                         report.task('趣味答题',metrics=metrics)
                     timing = {}
-                    pending = dict(key=key,question=current['question'],question_id=current['question_id'],
+                    pending = dict(key=current['key'],visual_key=current.get('visual_key'),
+                        question=current['question'],question_id=current['question_id'],
                         options=[r['text'] for r in current['options']],request_number=metrics['model_calls'],
                         first_observed=getattr(self,'_last_screen_read_started',time.monotonic()),timing=timing,
                         started=time.monotonic(),future=executor.submit(
                         self._resolve_race_timed,image,
-                        [r['text'] for r in current['options']],current['question'],timing))
+                        [r['text'] for r in current['options']],current['question'],timing,current['visual_required']))
                     self._race_save(f"question-{metrics['model_calls']:02d}",records)
                     self.send_log('对战：完整题面已读取，后台答题并同时确认题面')
                 self._sleep(0.05)

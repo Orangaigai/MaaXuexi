@@ -1,5 +1,28 @@
 """Exact daily-hint matches; no fuzzy ratios, all-select or length-based guesses."""
 import re
+import unicodedata
+
+
+def exact_hint_parts(red_texts, options):
+    """Return the only full ordered segmentation, using each visible button once."""
+    if not red_texts or not options or len(options)>12:return None
+    def normalize_part(text):
+        return re.sub(r'\s+','',unicodedata.normalize('NFKC',text)).strip('，,。；;：“”‘’"\'、')
+    target=''.join(normalize_part(text) for text in red_texts if isinstance(text,str))
+    parts=[(text,normalize_part(text)) for text in options]
+    if (not target or len(target)>100 or any(not value for _,value in parts)
+            or len({value for _,value in parts})!=len(parts)):
+        return None
+    solutions=[]
+    def search(offset,used,path):
+        if len(solutions)>1:return
+        if offset==len(target):
+            solutions.append(path);return
+        for index,(text,value) in enumerate(parts):
+            if index not in used and target.startswith(value,offset):
+                search(offset+len(value),used|{index},path+[text])
+    search(0,set(),[])
+    return solutions[0] if len(solutions)==1 else None
 
 
 def clean(text):

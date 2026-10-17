@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 from task_support import TaskIncomplete, TaskUnavailable, HumanRequired
+from question_visual import visual_evidence, visual_identity
 from four_player import FourPlayerQuiz, detect_fun_mode, race_network_error, race_match_expired, quiz_center, race_snapshot, race_finished, quiz_identity, race_score_page
 
 
@@ -512,16 +513,20 @@ class FunChallenge(FourPlayerQuiz):
             if finishing and self._fun_metrics['ending_answers_clicked'] >= 2:
                 raise TaskIncomplete('趣味答题两次收尾作答仍未结束，保留现场，未空等下一题超时')
             image = self.tasker.controller.cached_image.copy()
+            visual,visual_area=visual_evidence(image,records,options,question_body(records,options))
+            picture_key=visual_identity(image,visual_area) if visual and visual_area is not None else None
             first_observed = getattr(self,'_last_screen_read_started',time.monotonic())
             self._fun_metrics['model_calls'] += 1
             self.send_log(f'趣味答题：已确认答对{highest}题，DeepSeek识别下一题')
             started = time.monotonic()
-            answer = self.ai_resolver.resolve_fun_choice([image], [row['text'] for row in options],question_body(records,options))
+            answer = self.ai_resolver.resolve_fun_choice([image], [row['text'] for row in options],
+                question_body(records,options),visual_required=visual)
             self._fun_metrics['model_seconds'].append(round(time.monotonic()-started,2))
             self._check_active()
             fresh = self._fun_records()
             fresh_options = self._fun_options(fresh)
-            if fingerprint(fresh, fresh_options) != current or correct_count(fresh) != count:
+            if (fingerprint(fresh, fresh_options) != current or correct_count(fresh) != count
+                    or (picture_key is not None and picture_key != visual_identity(self.tasker.controller.cached_image,visual_area))):
                 self._fun_metrics['stale_evidence'] = dict(before=records, after=fresh,
                     before_options=options, after_options=fresh_options)
                 discarded = self._fun_metrics.get('stale_answers_discarded',0)+1
