@@ -20,6 +20,7 @@ from key_store import key_configured, load_key, save_key
 from provider_support import MODEL, invalidate_validation, provider_metadata, test_connection
 from utils import MaaWorker
 from task_support import VERSION, read_report, ordered_tasks, ALIASES
+from comment_tasks import comment_policy
 
 class ConfigModel(BaseModel):
     api_key: SecretStr = SecretStr('')
@@ -34,7 +35,7 @@ class DeviceModel(BaseModel):
     config: dict
 
 class TaskModel(BaseModel):
-    tasklist: list[Literal['登录', '选读文章', '视听学习', '本地频道', '订阅', '趣味答题', '每日答题']]
+    tasklist: list[Literal['登录', '选读文章', '视听学习', '本地频道', '订阅', '发表观点', '趣味答题', '每日答题']]
     fast_answer: bool = False
     debug: bool = False
     unattended: StrictBool = False
@@ -143,13 +144,17 @@ def get_provider():
 @app.get('/api/local/task-plan')
 def get_task_plan():
     path = Path('config/local-task-plan.json')
-    default = list(ALIASES)
+    default = [name for name in ALIASES if name != '发表观点' or comment_policy()['enabled']]
     try:
         plan = TaskModel(**json.loads(path.read_text('utf-8-sig')))
     except (OSError,ValueError,TypeError):
         plan = TaskModel(tasklist=default)
     return dict(**plan.model_dump(), available=list(ALIASES),
                 experimental=[], experimental_live_verified=False)
+
+@app.get('/api/local/comment-policy')
+def get_comment_policy():
+    return comment_policy()
 
 @app.post('/api/local/task-plan')
 def save_task_plan(plan: TaskModel):
@@ -158,6 +163,8 @@ def save_task_plan(plan: TaskModel):
             raise HTTPException(409,'请等当前任务结束后再保存定时清单。')
         if not plan.tasklist:
             raise HTTPException(400,'至少选择一项任务。')
+        if '发表观点' in plan.tasklist and not comment_policy()['enabled']:
+            raise HTTPException(409,'请先确认固定短句和每天发表范围，再加入定时清单。')
         value = dict(tasklist=list(dict.fromkeys(plan.tasklist)),fast_answer=False,debug=False)
         path = Path('config/local-task-plan.json')
         path.parent.mkdir(parents=True,exist_ok=True)
@@ -226,6 +233,8 @@ def start_selected(tasks: TaskModel, daily_acceptance=False):
             return dict(status='failed', message='任务已开始')
         if not tasks.tasklist:
             return dict(status='failed', message='请先选择任务')
+        if '发表观点' in tasks.tasklist and not comment_policy()['enabled']:
+            return dict(status='failed', message='发表观点尚待确认固定短句和每日使用范围，未启动发表。')
         if any(name in tasks.tasklist for name in ('每日答题','趣味答题')) and not key_configured():
             return dict(status='failed', message='答题任务需要先配置 DeepSeek 密钥。')
         tasks.tasklist = list(dict.fromkeys(tasks.tasklist))

@@ -6,7 +6,7 @@ $taskNames = @('\u767b\u5f55', '\u9009\u8bfb\u6587\u7ae0', '\u89c6\u542c\u5b66\u
 $planPath = Join-Path $appRoot 'config\local-task-plan.json'
 if (Test-Path -LiteralPath $planPath) {
     $plan = Get-Content -LiteralPath $planPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $allowedTasks = @($taskNames)
+    $allowedTasks = @($taskNames) + ('"\u53d1\u8868\u89c2\u70b9"' | ConvertFrom-Json)
     $configured = @($plan.tasklist | Select-Object -Unique)
     if (!$configured.Count -or @($configured | Where-Object {$_ -notin $allowedTasks}).Count) { throw 'Invalid local task plan.' }
     $taskNames = $configured

@@ -107,14 +107,14 @@ class LocalChannelTests(unittest.TestCase):
         with self.assertRaisesRegex(TaskIncomplete,'模拟器已断开'):value._screen_records()
         self.assertFalse(value.connected)
 
-    def test_ui_and_saved_plan_offer_the_same_seven_supported_tasks(self):
+    def test_ui_offers_supported_tasks_but_public_comment_is_opt_in(self):
         import ast,re,webui
         root=Path(__file__).resolve().parents[1]
         script=(root/'page/assets/local-provider.js').read_text('utf-8')
         names=ast.literal_eval(re.search(r'const names=(\[[^;]+\]);',script).group(1))
         self.assertEqual(names,list(task_support.ALIASES))
         example=json.loads((root/'config/local-task-plan.example.json').read_text('utf-8'))
-        self.assertEqual(example['tasklist'],names)
+        self.assertEqual(example['tasklist'],[name for name in names if name!='发表观点'])
         self.assertEqual(webui.TaskModel(tasklist=['本地频道']).tasklist,['本地频道'])
 
 if __name__=='__main__':unittest.main()

@@ -30,7 +30,7 @@ class RetainedTaskTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory,patch.object(webui,"task_running",return_value=False),patch.object(webui,"Path",side_effect=lambda relative:Path(directory)/relative):
             default=webui.get_task_plan()
             self.assertEqual(set(default["available"]),set(task_support.ALIASES))
-            self.assertEqual(len(default["available"]),7)
+            self.assertEqual(len(default["available"]),8)
             result=webui.save_task_plan(webui.TaskModel(tasklist=["登录","每日答题","每日答题"],debug=True))
             self.assertEqual(result["tasklist"],["登录","每日答题"])
             self.assertFalse(result["debug"])

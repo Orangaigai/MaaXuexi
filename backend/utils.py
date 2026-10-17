@@ -33,6 +33,7 @@ from score_navigation import ScoreNavigation
 from subscription_tasks import SubscriptionTasks, subscription_scene
 from subscription_store import SubscriptionStore
 from local_channel import LocalChannelTasks
+from comment_tasks import CommentTasks
 
 
 os.makedirs("logs/maa", exist_ok=True)
@@ -269,7 +270,7 @@ class RedTextOCR(CustomRecognition):
 resource.register_custom_recognition("RedTextOCR", RedTextOCR())
 
 
-class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, SubscriptionTasks, LocalChannelTasks):
+class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, SubscriptionTasks, LocalChannelTasks, CommentTasks):
     def __init__(
         self,
         queue: SimpleQueue,
@@ -526,6 +527,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                         subscription_score = self.subscribe()
                     elif current == '本地频道':
                         local_score = self.learn_local_channel(before.get(current))
+                    elif current == '发表观点':
+                        comment_score = self.publish_comment(before.get(current))
                     elif current != "登录":
                         raise TaskUnavailable("No handler for selected task")
                     self._check_active()
@@ -537,6 +540,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                     self.send_log('订阅流程结束，积分已核实，新增关注已清理' if current == '订阅'
                                   else current + "流程结束，正在核实积分")
                     after = (subscription_score if current == '订阅' else local_score if current == '本地频道'
+                             else comment_score if current == '发表观点'
                              else self.read_learning_score([current]).get(current))
                     if current == "视听学习" and after and not is_complete(after):
                         remaining = after["maximum"] - after["value"]

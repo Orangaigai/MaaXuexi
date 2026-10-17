@@ -29,7 +29,7 @@ class UnattendedTests(unittest.TestCase):
         return value
 
     def test_api_normalizes_order_even_if_daily_is_requested_first(self):
-        selected = ['每日答题', '趣味答题', '订阅', '本地频道', '视听学习', '选读文章', '登录', '每日答题']
+        selected = ['每日答题', '趣味答题', '发表观点', '订阅', '本地频道', '视听学习', '选读文章', '登录', '每日答题']
         self.assertEqual(webui.TaskModel(tasklist=selected).tasklist, list(task_support.ALIASES))
 
     def test_expired_unattended_wait_raises_without_android_input(self):
