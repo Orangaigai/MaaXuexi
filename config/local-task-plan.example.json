@@ -1,0 +1,5 @@
+{
+  "tasklist": ["登录", "选读文章", "视听学习", "订阅", "趣味答题", "每日答题"],
+  "fast_answer": false,
+  "debug": false
+}

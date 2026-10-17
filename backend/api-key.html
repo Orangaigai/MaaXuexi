@@ -1,0 +1,17 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>配置 DeepSeek — MaaXuexi</title>
+<style>body{font:16px/1.7 system-ui,sans-serif;background:#f4f6f9;color:#263244;margin:0;padding:48px 20px}main{max-width:570px;margin:auto;background:white;border-radius:16px;padding:32px;box-shadow:0 10px 35px #15234012}h1{font-size:25px;margin-top:0}label{display:block;font-weight:600;margin:24px 0 8px}input{box-sizing:border-box;width:100%;padding:13px;border:1px solid #b9c6d6;border-radius:8px;font-size:16px}button{background:#1970d5;color:white;border:0;border-radius:8px;padding:12px 22px;font-size:16px;margin:20px 0;cursor:pointer}button:disabled{opacity:.5;cursor:wait}a{color:#146bd2}small{display:block;color:#627287}#result{white-space:pre-wrap;padding:12px;border-radius:8px;background:#f1f5fa}input:focus{outline:2px solid #3987e7}</style>
+<main><h1>配置 DeepSeek 答题服务</h1><p>已选择 DeepSeek 官方接口与支持图片的 <b>deepseek-flash</b> 模型。</p>
+<p id="status">正在读取配置状态…</p>
+<form id="form"><label for="key">DeepSeek 官网 API Key</label><input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="粘贴你的 API Key" required>
+<small>密钥仅在本机加密保存，页面不会回显。调用答题接口时会提交给 DeepSeek 官方。</small>
+<button id="save" type="submit">保存并验证</button></form>
+<small>验证会发送一张不含账号信息的字母测试图，产生少量 API 调用费用。</small>
+<p id="result" role="status">文章、视频任务可以在不填密钥的情况下使用。</p><p><a href="/">返回 MaaXuexi 控制页</a></p></main>
+<script>
+const field=document.getElementById('key'),button=document.getElementById('save'),result=document.getElementById('result');
+async function state(){const p=await fetch('/api/local/provider',{cache:'no-store'}).then(r=>r.json());document.getElementById('status').textContent=p.validated?'当前状态：已配置，图片接口验证通过。':p.configured?'当前状态：密钥已保存，接口尚未验证通过。':'当前状态：尚未配置密钥。';}
+async function request(url,body){const response=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});const data=await response.json();if(!response.ok)throw Error(typeof data.detail==='string'?data.detail:'请求失败，请重试。');return data;}
+document.getElementById('form').addEventListener('submit',async e=>{e.preventDefault();button.disabled=true;result.textContent='正在保存并验证图片接口…';try{const key=field.value.trim();field.value='';await request('/api/local/provider',{api_key:key});const check=await request('/api/local/provider/test');result.textContent=check.message;result.style.color=check.status==='success'?'#167342':'#ad3e23';await state();}catch(error){result.textContent=error.message;}finally{button.disabled=false;}});
+state().catch(()=>{result.textContent='无法连接本机服务，请重新启动 MaaXuexi。'});
+</script></html>

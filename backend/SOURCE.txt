@@ -1,0 +1,54 @@
+MaaXuexi local revision local-20261017.6 (complete daily plan, live acceptance in progress)
+Upstream: https://github.com/ravizhan/MaaXuexi
+Base version: v1.7.1
+Pinned upstream commit: ff6a0d5a811c5fc987a0c0ae77ea9abaf55fa073
+License: AGPL-3.0; original LICENSE retained at project root.
+
+Retained functions:
+- Candidate subscription module: one-account score checks, round-based SQLite cycle counts,
+  cleanup of owned new follows, no post-cleanup score revisit (owner-confirmed behavior).
+  Counts increment only after confirmed follow and cancellation. No per-account score history.
+  372 offline checks pass; live credit and nonempty cleanup remain under acceptance.
+  Live .4 subscription run d29a0bb6628f stopped on real platform validation with 0/2.
+  .5 uses the observed My/Add route and resolves failed pending intents without incrementing counts.
+  .6 enables the six-task default plan, excludes owner pause time from subscription transitions,
+  continues after a confirmed saved follow with no points, and resumes owned subscription details.
+- Score checking, articles, videos, single/double/four-player fun quiz and daily quiz.
+- Choice, fill-in and click-to-fill daily questions; hint OCR and official DeepSeek.
+- Hidden launcher, one control page, local encrypted key, manual start/stop/continue.
+- Daily 09:00 Windows task with the saved six-task order including subscriptions.
+- Score verification, full-score skipping, bounded network retry and owner-only verification.
+
+Module responsibilities:
+utils.py: worker state, task execution, device connection and daily question preparation.
+content_tasks.py: article/video execution and actual playback progress.
+score_navigation.py: fresh first score entry, list navigation and score reading.
+home_navigation.py: recognized home navigation and startup waits.
+daily_flow.py: final submission, verification pause, result recognition and return.
+daily_hints.py: strict hint-to-option matching.
+fun_challenge.py / four_player.py: current daily fun mode, answers, settlement and return.
+answer_client.py: bounded official DeepSeek requests and answer contracts.
+key_store.py / provider_support.py: Windows DPAPI key storage and provider validation.
+task_support.py: task order, score parsing and durable results.
+webui.py: loopback-only task and configuration API.
+
+Cleanup revision:
+Move 13 existing handlers into content and score modules while preserving their interfaces.
+Remove unused imports, obsolete acceptance state and duplicate existing-round recovery.
+Refresh the first score page of each run; a real midnight screenshot still showed yesterday's full scores.
+Retain the daily direct-result fix: the real fifth-answer Click can submit the round before verification;
+accept only five questions plus program submission, observed result and automatic return.
+The short-press recovery branch remains an existing, bounded candidate and was not exercised in that successful direct-result test.
+Runtime, recognition models, all quiz modes, saved task plan and key remain intact.
+
+Current checks and actual live scope: docs/收尾检查与验收.md and config/verification.json.
+Historical source ledger, reports and screenshots: docs/历史记录位置.txt.
+Verification remains owner-only; scheduled runs observe owner action for up to 600 seconds, then end needs_human on timeout.
+
+Live follow-up: support observed video_big cards, keep verified playback on missing progress, allow recognized already-opened videos when points remain, reset old match error flags, accept native Click result list coordinates. Offline checks: 327. Live results remain separately documented.
+
+2026-10-17 verification messages: unattended runs explicitly end and require a new manual start; only a live manual observer promises automatic continuation. Show the detected fun mode and restart action on the control page. 329 offline checks pass; no new match was started.
+
+2026-10-17 one-start continuation: observe recognized pages after owner verification/login across navigation, question transitions and content recovery. Scheduled pauses retain the same worker for at most 600 seconds; the daily launcher keeps monitoring and excludes pause duration from its active limit. No automatic CAPTCHA solving or extra full-task replay. 337 offline checks pass.
+
+2026-10-17 selected completion: recognize source/publisher and label-free selected-option layout only with a pending submission; real verification overrides it. 342 offline checks pass. Live .2 stalled here and is not accepted.

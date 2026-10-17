@@ -1,0 +1,14 @@
+/.venv/
+/logs/
+/debug/
+/config/*
+!/config/source-manifest.json
+!/config/local-task-plan.example.json
+**/__pycache__/
+*.py[cod]
+*.sqlite3*
+*.dpapi
+*.lnk
+*.log
+.env
+.env.*

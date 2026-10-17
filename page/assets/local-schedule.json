@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "time": "09:00",
+  "timezone": "Asia/Shanghai",
+  "task_name": "MaaXuexi-Daily-0900",
+  "start_when_available": true,
+  "requires_windows_login": true,
+  "wake_from_sleep": false,
+  "tasks": [
+    "登录",
+    "选读文章",
+    "视听学习",
+    "趣味答题",
+    "每日答题"
+  ],
+  "next_run": "2026-10-12T09:00:00.0000000+08:00"
+}

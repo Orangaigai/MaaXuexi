@@ -1,0 +1,77 @@
+{
+  "action_details": {
+    "action": "Click",
+    "action_id": 500000112,
+    "box": [
+      557,
+      50,
+      121,
+      51
+    ],
+    "detail": {
+      "contact": 0,
+      "point": [
+        586,
+        91
+      ],
+      "pressure": 1
+    },
+    "name": "确定",
+    "success": true
+  },
+  "focus": null,
+  "name": "确定",
+  "node_details": {
+    "action_id": 500000112,
+    "completed": true,
+    "name": "确定",
+    "node_id": 300000142,
+    "reco_id": 400000177
+  },
+  "node_id": 300000142,
+  "reco_details": {
+    "algorithm": "TemplateMatch",
+    "box": [
+      557,
+      50,
+      121,
+      51
+    ],
+    "detail": {
+      "all": [
+        {
+          "box": [
+            557,
+            50,
+            121,
+            51
+          ],
+          "score": 0.993654
+        }
+      ],
+      "best": {
+        "box": [
+          557,
+          50,
+          121,
+          51
+        ],
+        "score": 0.993654
+      },
+      "filtered": [
+        {
+          "box": [
+            557,
+            50,
+            121,
+            51
+          ],
+          "score": 0.993654
+        }
+      ]
+    },
+    "name": "确定",
+    "reco_id": 400000177
+  },
+  "task_id": 200000142
+}

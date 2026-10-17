@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MaaXuexi · 任务控制台</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f5f8;color:#233044;font:15px/1.7 system-ui,"Microsoft YaHei",sans-serif}main{max-width:960px;margin:30px auto;padding:0 22px}header{display:flex;justify-content:space-between;align-items:center;gap:18px}h1{font-size:27px;margin:0}h2{font-size:18px;margin:0 0 14px}p{margin:6px 0;color:#59677b}.card{background:white;border:1px solid #e1e6ee;border-radius:14px;padding:22px;margin:18px 0}.bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.muted{font-size:13px;color:#67768a}button{padding:9px 17px;border-radius:8px;border:1px solid #c5d1e2;background:white;color:#233044;font:inherit;cursor:pointer}button.primary{background:#1b63c7;color:white;border-color:#1b63c7}button:disabled{opacity:.45;cursor:default}a{color:#1b63c7}label{display:inline-flex;gap:8px;align-items:center;margin:3px 22px 13px 0}input{accent-color:#1b63c7;width:17px;height:17px}select{max-width:360px;padding:8px;font:inherit}#status{font-size:17px;color:#233044;margin:10px 0}#resultTable{width:100%;border-collapse:collapse}th,td{text-align:left;border-bottom:1px solid #edf0f5;padding:9px 8px}th{color:#67768a;font-weight:500}pre{font:13px/1.8 Consolas,"Microsoft YaHei",monospace;white-space:pre-wrap;overflow:auto;max-height:310px;background:#f7f9fc;padding:14px;border-radius:8px;margin-bottom:0}.badge{font-size:13px;padding:4px 11px;border-radius:20px;background:#eaf2ff;color:#285685}#actionMessage{min-height:25px;color:#9b4613}button:focus-visible,a:focus-visible,input:focus-visible{outline:3px solid #99bff7;outline-offset:3px}@media(max-width:600px){header{align-items:flex-start;flex-direction:column}.card{padding:17px}main{padding:0 12px}th,td{padding:8px 3px;font-size:13px}}
+</style>
+</head>
+<body><main>
+<header><div><h1>MaaXuexi 任务控制台</h1><p>模拟器负责执行，这里查看进度和管理每天的任务。</p></div><span id="connection" class="badge">连接中…</span></header>
+<section class="card"><div class="bar"><h2 style="margin:0">运行状态</h2><span id="version" class="muted"></span></div>
+<div id="status" role="status" aria-live="polite">正在读取后台状态…</div>
+<p id="schedule">正在读取定时计划…</p>
+<div class="bar"><button id="stop" hidden>中止当前任务</button><button id="resume" hidden>处理完成，继续任务</button><select id="device" hidden aria-label="选择模拟器"></select><button id="connect" hidden>连接模拟器</button></div>
+<p class="muted">自动执行需要电脑开机、登录 Windows、未休眠且联网。关闭此网页不会停止后台。</p></section>
+<section class="card"><h2>任务清单</h2><div id="choices"></div>
+<div class="bar"><button class="primary" id="start" disabled>执行所选任务</button><button id="save" disabled>保存为每天 9:00 清单</button></div>
+<p id="actionMessage" role="status" aria-live="polite"></p>
+<p class="muted">执行顺序：登录→文章→视频→订阅→趣味答题→每日答题；只执行所选项目，已满分或已领取对战首局积分会跳过。订阅逐个核分，随后只取消本机新增的关注，保留历史用于去重。趣味按当日计分入口执行，一局后返回核分。网络错误最多点重试一次。只需启动一次：真实验证或登录由本人在 MuMu 完成，程序观察页面恢复后继续，无需再点网页执行或继续。定时运行每次最多等候10分钟，超时结束并报告剩余项目。实机验收范围见本机说明。</p>
+<div class="bar"><span id="provider" class="muted">答题服务读取中…</span><a href="/local/api-key">配置 DeepSeek 密钥</a></div></section>
+<section class="card"><h2>最近一次运行结果</h2><table id="resultTable"><thead><tr><th>任务</th><th>积分</th><th>结果</th></tr></thead><tbody id="results"></tbody></table></section>
+<section class="card"><div class="bar"><h2 style="margin:0">运行日志</h2><button id="clearLog">清空显示</button></div><pre id="logs" aria-label="运行日志">正在连接日志…</pre></section>
+</main></body></html>
