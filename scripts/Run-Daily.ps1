@@ -2,7 +2,7 @@ param([switch]$CheckOnly, [switch]$NoBrowser)
 $ErrorActionPreference = 'Stop'
 $appRoot = Split-Path -Parent $PSScriptRoot
 $baseUrl = 'http://127.0.0.1:8000'
-$taskNames = @('\u767b\u5f55', '\u9009\u8bfb\u6587\u7ae0', '\u89c6\u542c\u5b66\u4e60', '\u672c\u5730\u9891\u9053', '\u8ba2\u9605', '\u8da3\u5473\u7b54\u9898', '\u6bcf\u65e5\u7b54\u9898') | ForEach-Object { ('"'+$_+'"') | ConvertFrom-Json }
+$taskNames = @('\u767b\u5f55', '\u9009\u8bfb\u6587\u7ae0', '\u89c6\u542c\u5b66\u4e60', '\u672c\u5730\u9891\u9053', '\u8da3\u5473\u7b54\u9898', '\u8ba2\u9605', '\u6bcf\u65e5\u7b54\u9898') | ForEach-Object { ('"'+$_+'"') | ConvertFrom-Json }
 $planPath = Join-Path $appRoot 'config\local-task-plan.json'
 if (Test-Path -LiteralPath $planPath) {
     $plan = Get-Content -LiteralPath $planPath -Raw -Encoding UTF8 | ConvertFrom-Json

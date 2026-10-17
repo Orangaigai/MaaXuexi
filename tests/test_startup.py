@@ -1,5 +1,6 @@
 """Regressions for a lost ADB connection, cold boot and start error reporting."""
 import sys
+import subprocess
 import json
 import tempfile
 import threading
@@ -94,6 +95,42 @@ class StartupTests(unittest.TestCase):
         self.assertEqual(sum("connect" in args for args in seen),2)
         self.assertTrue(any("launch" in args for args in seen))
         self.assertTrue(any("getprop" in args for args in seen))
+
+    def test_cold_boot_tolerates_one_connect_or_boot_probe_timeout(self):
+        for timed_out in ('connect', 'getprop'):
+            with self.subTest(command=timed_out):
+                failed = False
+                def run(args, timeout=8):
+                    nonlocal failed
+                    if 'info' in args:
+                        return SimpleNamespace(returncode=0, stdout=json.dumps(dict(
+                            is_process_started=True, adb_port=16384)))
+                    if timed_out in args and not failed:
+                        failed = True
+                        raise subprocess.TimeoutExpired(args, timeout)
+                    return SimpleNamespace(returncode=0, stdout='1')
+                with patch.object(Path,'read_text',return_value=self.config()), \
+                     patch.object(Path,'is_file',return_value=True), \
+                     patch.object(device_support,'command',side_effect=run), \
+                     patch.object(device_support,'online',return_value=True), \
+                     patch.object(device_support.time,'sleep'):
+                    self.assertEqual(device_support.prepare_emulator(Mock(),Mock())[1],
+                                     '127.0.0.1:16384')
+                self.assertTrue(failed)
+
+    def test_persistent_adb_timeout_still_stops_at_existing_boot_deadline(self):
+        def run(args, timeout=8):
+            if 'info' in args:
+                return SimpleNamespace(returncode=0, stdout=json.dumps(dict(
+                    is_process_started=True, adb_port=16384)))
+            raise subprocess.TimeoutExpired(args, timeout)
+        with patch.object(Path,'read_text',return_value=self.config()), \
+             patch.object(Path,'is_file',return_value=True), \
+             patch.object(device_support,'command',side_effect=run), \
+             patch.object(device_support.time,'monotonic',side_effect=[0,0,0,0,2]), \
+             patch.object(device_support.time,'sleep'):
+            with self.assertRaisesRegex(task_support.TaskIncomplete,'等待模拟器连接超时'):
+                device_support.prepare_emulator(Mock(),Mock(),timeout=1)
 
     def test_preparation_can_be_stopped_before_any_command(self):
         with patch.object(Path,"read_text",return_value=self.config()), patch.object(Path,"is_file",return_value=True), \

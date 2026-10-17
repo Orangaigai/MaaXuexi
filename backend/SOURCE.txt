@@ -1,4 +1,4 @@
-MaaXuexi local revision local-20261017.18 (plainer article comments)
+MaaXuexi local revision local-20261017.19 (verification-aware task order)
 Upstream: https://github.com/ravizhan/MaaXuexi
 Base version: v1.7.1
 Pinned upstream commit: ff6a0d5a811c5fc987a0c0ae77ea9abaf55fa073
@@ -74,3 +74,8 @@ Eight-task daily plan enabled. Article attempt history avoids repeated comments 
 
 .18: Plainer wording, source-gated AI abbreviation, literal evidence plus semantic review rather than character overlap.
 432 offline tests passed. Two discussions inspected read-only; no other comments copied and no extra comment posted.
+
+.19: Native score inventory rechecked: 1/12/12/1/10/2/1/5 daily caps (44 total).
+Move fun quiz before subscriptions/comments within the occasional-challenge group; daily quiz remains last.
+Groups reflect local observations and upstream emulator reports, not mandatory/zero verification guarantees.
+Continue bounded Android boot readiness checks after transient ADB connect/getprop timeouts.

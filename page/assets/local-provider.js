@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const $=id=>document.getElementById(id);
-  const names=['登录','选读文章','视听学习','本地频道','订阅','发表观点','趣味答题','每日答题'];
+  const names=['登录','选读文章','视听学习','本地频道','趣味答题','订阅','发表观点','每日答题'];
   const labels={pending:'等待',running:'执行中',skipped_full:'已满分，跳过',skipped_mode:'按设置跳过此模式',verified:'积分已核实',credited:'本日首局积分已领取',unavailable:'入口不可用',unverified:'积分待读取',incomplete:'积分未满',failed:'未完成',stopped:'已中止',needs_human:'需本人处理',deferred:'本轮未继续'};
   const inputs=new Map(); let commentEnabled=false,loaded=false,busy=false,health=null,deviceList=[],providerText='DeepSeek：正在读取配置';
   for(const name of names){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.disabled=true;label.append(input,document.createTextNode(name==='每日答题'?'每日答题（可能需要本人验证）':name==='趣味答题'?'趣味答题（按当日模式；验证需本人）':name));$('choices').append(label);inputs.set(name,input);}

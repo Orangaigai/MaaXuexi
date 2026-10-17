@@ -72,9 +72,15 @@ def prepare_emulator(progress, check_active, timeout=600):
             address = f"{host}:{int(info['adb_port'])}"
             base = (str(adb), "-s", address)
             # adb connect can exit zero even when the connection failed.
-            command([adb, "connect", address])
-            if online(base):
-                boot = command([*base, "shell", "getprop", "sys.boot_completed"])
+            try:
+                command([adb, "connect", address])
+                boot = (command([*base, "shell", "getprop", "sys.boot_completed"])
+                        if online(base) else None)
+            except (OSError, subprocess.SubprocessError):
+                # Android may advertise its port before ADB accepts commands.
+                # Stay inside the existing bounded boot wait instead of aborting.
+                boot = None
+            if boot is not None:
                 if boot.returncode == 0 and boot.stdout.strip() == "1":
                     check_active()
                     progress("正在显示模拟器窗口")
