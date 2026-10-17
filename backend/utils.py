@@ -32,6 +32,7 @@ from content_tasks import ContentTasks, is_audio_collection
 from score_navigation import ScoreNavigation
 from subscription_tasks import SubscriptionTasks, subscription_scene
 from subscription_store import SubscriptionStore
+from local_channel import LocalChannelTasks
 
 
 os.makedirs("logs/maa", exist_ok=True)
@@ -268,7 +269,7 @@ class RedTextOCR(CustomRecognition):
 resource.register_custom_recognition("RedTextOCR", RedTextOCR())
 
 
-class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, SubscriptionTasks):
+class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, SubscriptionTasks, LocalChannelTasks):
     def __init__(
         self,
         queue: SimpleQueue,
@@ -478,6 +479,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             if daily_acceptance and (unattended or tasks != ['每日答题']):
                 raise TaskIncomplete('单组验收仅支持手动运行每日答题')
             self.prepare_device()
+            if '本地频道' in tasks:
+                self._local_clear_location_prompt()
             if previous.get("status") in ("stopped","partial","failed") and any(name not in ALIASES for name in previous.get("tasks",{})):
                 self.send_log("已停止的旧功能不再继续，返回首页核对保留任务")
                 self._reset_home()
@@ -521,6 +524,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                         self.funny_answer()
                     elif current == "订阅":
                         subscription_score = self.subscribe()
+                    elif current == '本地频道':
+                        local_score = self.learn_local_channel(before.get(current))
                     elif current != "登录":
                         raise TaskUnavailable("No handler for selected task")
                     self._check_active()
@@ -531,7 +536,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                         self.run_report.task(current, acceptance_flow_verified=True)
                     self.send_log('订阅流程结束，积分已核实，新增关注已清理' if current == '订阅'
                                   else current + "流程结束，正在核实积分")
-                    after = (subscription_score if current == '订阅'
+                    after = (subscription_score if current == '订阅' else local_score if current == '本地频道'
                              else self.read_learning_score([current]).get(current))
                     if current == "视听学习" and after and not is_complete(after):
                         remaining = after["maximum"] - after["value"]
@@ -875,6 +880,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             "pre_delay":0, "post_delay":0
         }}).wait().get()
         self._last_screen_read_seconds = time.monotonic()-started
+        if detail is None:
+            self.connected=False
+            raise TaskIncomplete('截图控制器未就绪或模拟器已断开，请重新执行以连接设备')
         if detail.status.failed or not detail.nodes:
             return []
         return [dict(text=x.text,box=list(x.box)) for x in getattr(detail.nodes[0].recognition,'all_results',[])]

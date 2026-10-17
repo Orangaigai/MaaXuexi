@@ -22,7 +22,7 @@ class RetainedTaskTests(unittest.TestCase):
         state=webui.AppState();state.worker=SimpleNamespace(connected=True)
         with patch.object(webui,"app_state",state):
             with TestClient(webui.app) as client:
-                for body in ({"tasklist":["本地频道"]},
+                for body in ({"tasklist":["收藏"]},
                              {"tasklist":["强国运动"]},{"tasklist":["每日答题"],"fun_acceptance":True}):
                     self.assertEqual(client.post("/api/start",json=body).status_code,422)
 
@@ -30,13 +30,13 @@ class RetainedTaskTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory,patch.object(webui,"task_running",return_value=False),patch.object(webui,"Path",side_effect=lambda relative:Path(directory)/relative):
             default=webui.get_task_plan()
             self.assertEqual(set(default["available"]),set(task_support.ALIASES))
-            self.assertEqual(len(default["available"]),6)
+            self.assertEqual(len(default["available"]),7)
             result=webui.save_task_plan(webui.TaskModel(tasklist=["登录","每日答题","每日答题"],debug=True))
             self.assertEqual(result["tasklist"],["登录","每日答题"])
             self.assertFalse(result["debug"])
 
     def test_cancelled_or_failed_retired_tasks_are_abandoned_before_core(self):
-        for state,name in [("stopped","本地频道"),("partial","强国运动"),("failed","强国运动")]:
+        for state,name in [("stopped","收藏"),("partial","强国运动"),("failed","强国运动")]:
             value=worker();value._reset_home=Mock();value._finish_existing_quiz=Mock()
             value.read_learning_score=Mock(return_value={"登录":dict(value=1,maximum=1)})
             with patch("utils.read_report",return_value={"status":state,"tasks":{name:{}}}):

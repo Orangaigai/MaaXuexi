@@ -1,4 +1,4 @@
-MaaXuexi local revision local-20261017.9 (complete daily plan, live acceptance in progress)
+MaaXuexi local revision local-20261017.14 (local-channel extension)
 Upstream: https://github.com/ravizhan/MaaXuexi
 Base version: v1.7.1
 Pinned upstream commit: ff6a0d5a811c5fc987a0c0ae77ea9abaf55fa073
@@ -8,7 +8,7 @@ Retained functions:
 - Candidate subscription module: one-account score checks, round-based SQLite cycle counts,
   cleanup of owned new follows, no post-cleanup score revisit (owner-confirmed behavior).
   Counts increment only after confirmed follow and cancellation. No per-account score history.
-  377 offline checks pass; live credit and nonempty cleanup remain under acceptance.
+  Subscription credit and batch cleanup were accepted in .13; historical counts and evidence remain recorded.
   Live .4 subscription run d29a0bb6628f stopped on real platform validation with 0/2.
   .5 uses the observed My/Add route and resolves failed pending intents without incrementing counts.
   .6 enables the six-task default plan, excludes owner pause time from subscription transitions,
@@ -19,7 +19,11 @@ Retained functions:
 - Score checking, articles, videos, single/double/four-player fun quiz and daily quiz.
 - Choice, fill-in and click-to-fill daily questions; hint OCR and official DeepSeek.
 - Hidden launcher, one control page, local encrypted key, manual start/stop/continue.
-- Daily 09:00 Windows task with the saved six-task order including subscriptions.
+- Daily 09:00 Windows task supports the seven-task order including local channel and subscriptions.
+- Local-channel handler follows the current native region and regional learning-platform icon,
+  then checks the real 1-point card. Flow ideas were reviewed in LearnChinaHelper and AiQiangGUO;
+  old scripts were not installed or executed. Candidate run ca4ebedf6d8a earned 0/1 to 1/1.
+  Current control, task API, launcher and plan example include the new task; 395 offline checks pass.
 - Score verification, full-score skipping, bounded network retry and owner-only verification.
 
 Module responsibilities:

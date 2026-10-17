@@ -7,9 +7,9 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "local-20261017.13"
+VERSION = "local-20261017.14"
 REPORT_PATH = Path("config/last-run.json")
-ALIASES = {"登录": "登录", "选读文章": "我要选读文章", "视听学习": "我要视听学习", "订阅": "订阅", "趣味答题": "趣味答题", "每日答题": "每日答题"}
+ALIASES = {"登录": "登录", "选读文章": "我要选读文章", "视听学习": "我要视听学习", "本地频道": "本地频道", "订阅": "订阅", "趣味答题": "趣味答题", "每日答题": "每日答题"}
 BOUNDARIES = ("登录", "我要选读文章", "我要视听学习", "每日答题", "趣味答题", "订阅", "强国运动", "专项答题", "每周答题", "发表观点", "本地频道")
 
 

@@ -19,7 +19,7 @@ from pydantic import BaseModel, SecretStr, ConfigDict, field_validator, StrictBo
 from key_store import key_configured, load_key, save_key
 from provider_support import MODEL, invalidate_validation, provider_metadata, test_connection
 from utils import MaaWorker
-from task_support import VERSION, read_report, ordered_tasks
+from task_support import VERSION, read_report, ordered_tasks, ALIASES
 
 class ConfigModel(BaseModel):
     api_key: SecretStr = SecretStr('')
@@ -34,7 +34,7 @@ class DeviceModel(BaseModel):
     config: dict
 
 class TaskModel(BaseModel):
-    tasklist: list[Literal['登录', '选读文章', '视听学习', '订阅', '趣味答题', '每日答题']]
+    tasklist: list[Literal['登录', '选读文章', '视听学习', '本地频道', '订阅', '趣味答题', '每日答题']]
     fast_answer: bool = False
     debug: bool = False
     unattended: StrictBool = False
@@ -143,12 +143,12 @@ def get_provider():
 @app.get('/api/local/task-plan')
 def get_task_plan():
     path = Path('config/local-task-plan.json')
-    default = ['登录','选读文章','视听学习','订阅','趣味答题','每日答题']
+    default = list(ALIASES)
     try:
         plan = TaskModel(**json.loads(path.read_text('utf-8-sig')))
     except (OSError,ValueError,TypeError):
         plan = TaskModel(tasklist=default)
-    return dict(**plan.model_dump(), available=['登录','选读文章','视听学习','订阅','趣味答题','每日答题'],
+    return dict(**plan.model_dump(), available=list(ALIASES),
                 experimental=[], experimental_live_verified=False)
 
 @app.post('/api/local/task-plan')

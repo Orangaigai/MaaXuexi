@@ -17,7 +17,7 @@
 <section class="card"><h2>任务清单</h2><div id="choices"></div>
 <div class="bar"><button class="primary" id="start" disabled>执行所选任务</button><button id="save" disabled>保存为每天 9:00 清单</button></div>
 <p id="actionMessage" role="status" aria-live="polite"></p>
-<p class="muted">执行顺序：登录→文章→视频→订阅→趣味答题→每日答题；只执行所选项目，已满分或已领取对战首局积分会跳过。订阅逐个核分，随后只取消本机新增的关注，保留历史用于去重。趣味按当日计分入口执行，一局后返回核分。网络错误最多点重试一次。只需启动一次：真实验证或登录由本人在 MuMu 完成，程序观察页面恢复后继续，无需再点网页执行或继续。定时运行每次最多等候10分钟，超时结束并报告剩余项目。实机验收范围见本机说明。</p>
+<p class="muted">执行顺序：登录→文章→视频→本地频道→订阅→趣味答题→每日答题；只执行所选项目，已满分或已领取对战首局积分会跳过。本地频道自动识别当前地区，打开地区平台后核分。订阅逐个核分，随后只取消本机新增的关注，保留历史用于去重。趣味按当日计分入口执行，一局后返回核分。网络错误最多点重试一次。只需启动一次：真实验证或登录由本人在 MuMu 完成，程序观察页面恢复后继续，无需再点网页执行或继续。定时运行每次最多等候10分钟，超时结束并报告剩余项目。实机验收范围见本机说明。</p>
 <div class="bar"><span id="provider" class="muted">答题服务读取中…</span><a href="/local/api-key">配置 DeepSeek 密钥</a></div></section>
 <section class="card"><h2>最近一次运行结果</h2><table id="resultTable"><thead><tr><th>任务</th><th>积分</th><th>结果</th></tr></thead><tbody id="results"></tbody></table></section>
 <section class="card"><div class="bar"><h2 style="margin:0">运行日志</h2><button id="clearLog">清空显示</button></div><pre id="logs" aria-label="运行日志">正在连接日志…</pre></section>
