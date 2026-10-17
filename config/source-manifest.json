@@ -218,5 +218,6 @@
   "tests/fixtures/model-eval/race-question.png": "eee7f6da4a5c71050ed5698e41f381873cbcd47f2bb559855900ce615d023615",
   "tests/fixtures/model-eval/race-feedback.png": "bbda82b68dbd32fc9d29e8aa712f3e3eca5f9a1db363eaab4bedb6543f5fd51f",
   "docs/每日文字分流与模型对比-20261018.md": "0f72893444262a6c9bb9c7197ae321557239a58aa34c2f32640986dde555ba10",
-  "tests/test_full_flow_order.py": "5befed47a64c6e3cd150e6fd91a208c622c64d8995f6eb236cee178fd6eba58f"
+  "tests/test_full_flow_order.py": "5befed47a64c6e3cd150e6fd91a208c622c64d8995f6eb236cee178fd6eba58f",
+  "docs/连续流程验收-20261018.md": "d600b7b928203c0757b617e788c13f76dd2d9402be7088b97ce32e8db96683ed"
 }
