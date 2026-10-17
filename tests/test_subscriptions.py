@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
 from subscription_store import SubscriptionStore, account_key
-from subscription_tasks import SubscriptionTasks, subscription_accounts, subscription_scene, owned_detail, category_selected, MAX_ATTEMPTS
+from subscription_tasks import SubscriptionTasks, subscription_accounts, subscription_scene, owned_detail, category_selected, cancellation_action, MAX_ATTEMPTS
 from task_support import RunReport, TaskIncomplete, HumanRequired, ordered_tasks, parse_score_rows
 import task_support
 
@@ -89,6 +89,12 @@ class HistoryTests(unittest.TestCase):
 
 
 class RecognitionTests(unittest.TestCase):
+    def test_cancel_confirmation_prefers_action_button_over_dialog_title(self):
+        title=dict(text='取消订阅',box=[280,480,150,35])
+        confirm=dict(text='确认',box=[450,720,80,35])
+        self.assertEqual(cancellation_action([title,confirm]),confirm)
+        self.assertIsNone(cancellation_action([title]))
+        self.assertIsNone(cancellation_action([title,confirm,dict(text='访问验证',box=[300,134,110,31])]))
     def test_observed_red_category_marker_distinguishes_waiting_from_recommended(self):
         import numpy as np
         from PIL import Image
@@ -359,3 +365,12 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(override[name]['roi'],[0,120,140,1060])
         self.assertEqual(override[name]['expected'],['^待订阅$'])
         self.assertEqual(override[name]['timeout'],8000)
+
+    def test_unfollowed_owned_detail_can_resume_after_verification(self):
+        from test_optimization import worker
+        value=worker();value._sub_cleanup_name='频道'
+        value._screen_records=Mock(return_value=[dict(text='频道',box=[215,140,120,25]),
+                                                dict(text='订阅',box=[550,150,90,30])])
+        value._captcha_present=Mock(return_value=False)
+        self.assertFalse(value._owner_resume_ready())
+        self.assertTrue(value._owner_resume_ready())

@@ -718,7 +718,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                        or race_finished(records) or race_match_expired(records)
                        or bool(race_network_error(records)))
         ready = bool(normal or question or content or competition or subscription_scene(records)
-                     or owned_detail(records,getattr(self,'_sub_cleanup_name',None)))
+                     or owned_detail(records,getattr(self,'_sub_cleanup_name',None))
+                     or owned_detail(records,getattr(self,'_sub_cleanup_name',None),'订阅'))
         self._owner_resume_stable = getattr(self, '_owner_resume_stable', 0) + 1 if ready else 0
         if self._owner_resume_stable < 2 or not self._app_in_foreground():
             return False

@@ -25,14 +25,24 @@ def subscription_scene(records):
     return None
 
 
-def owned_detail(records, name):
+def owned_detail(records, name, state='已订阅'):
     """Only a journalled account's own header may authorize an unfollow click."""
     if verification_visible(records):
         return False
     headers = [r for r in records if re.sub(r'\s+', '',r['text']) == name and 80 <= r['box'][1] < 420]
-    buttons = [r for r in records if r['text'].strip() == '已订阅'
+    buttons = [r for r in records if r['text'].strip() == state
                and r['box'][0] >= 420 and 80 <= r['box'][1] < 420]
     return len(headers) == len(buttons) == 1
+
+
+def cancellation_action(records):
+    if verification_visible(records) or not any(re.search('取消.*订阅',r['text']) for r in records):
+        return None
+    confirm=[r for r in records if r['text'].strip() in ('确定','确认') and r['box'][1]>=400]
+    if len(confirm)==1:
+        return confirm[0]
+    actions=[r for r in records if r['text'].strip()=='取消订阅' and r['box'][1]>=700]
+    return actions[0] if len(actions)==1 else None
 
 
 def subscription_accounts(records):
@@ -322,19 +332,12 @@ class SubscriptionTasks:
             self._sub_click(found)
             detail = self._sub_wait(lambda rows:owned_detail(rows,attempt['name']))
             self._sub_label(detail,'已订阅',left=420,top=80,bottom=420)
-            dialog = self._sub_wait(lambda rows:any(r['text'].strip() in ('取消订阅','确定','确认') for r in rows))
-            cancel = [r for r in dialog if r['text'].strip() == '取消订阅']
-            confirm = [r for r in dialog if r['text'].strip() in ('确定','确认')]
-            if len(cancel) == 1:
-                self._sub_click(cancel[0])
-            elif len(confirm) == 1 and any(re.search('取消.*订阅',r['text']) for r in dialog):
-                self._sub_click(confirm[0])
-            else:
-                raise TaskIncomplete('取消订阅确认不明确，已保留待清理记录')
-            result = self._sub_wait(lambda rows:any(r['text'].strip() == '订阅'
-                                   and r['box'][0] >= 420 and 80 <= r['box'][1] < 420 for r in rows))
-            if not any(re.sub(r'\s+','',r['text']) == attempt['name'] for r in result):
-                raise TaskIncomplete('取消后的账号身份未确认')
+            dialog = self._sub_wait(lambda rows:owned_detail(rows,attempt['name'],'订阅')
+                                    or cancellation_action(rows) is not None)
+            action=cancellation_action(dialog)
+            if action is not None:
+                self._sub_click(action)
+            result = self._sub_wait(lambda rows:owned_detail(rows,attempt['name'],'订阅'))
             self._sub_evidence('cancelled-'+attempt['id'][:12],result)
             self._sub_back()
             self._sub_wait(lambda rows:subscription_scene(rows) == 'mine')
