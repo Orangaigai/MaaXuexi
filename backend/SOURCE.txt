@@ -1,4 +1,4 @@
-MaaXuexi local revision local-20261017.17 (contextual comments with article history)
+MaaXuexi local revision local-20261017.18 (plainer article comments)
 Upstream: https://github.com/ravizhan/MaaXuexi
 Base version: v1.7.1
 Pinned upstream commit: ff6a0d5a811c5fc987a0c0ae77ea9abaf55fa073
@@ -71,3 +71,6 @@ Exercise excluded. Saved seven-task daily plan remains active; comments are not 
 
 .17: Owner approved contextual daily publication. .16 run 0d0b739c2be1 posted once and verified 0/1 -> 1/1 after the verification page cleared.
 Eight-task daily plan enabled. Article attempt history avoids repeated comments on the same article; 431 offline tests passed.
+
+.18: Plainer wording, source-gated AI abbreviation, literal evidence plus semantic review rather than character overlap.
+432 offline tests passed. Two discussions inspected read-only; no other comments copied and no extra comment posted.

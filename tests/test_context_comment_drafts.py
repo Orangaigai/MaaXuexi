@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
-from comment_drafts import ContextCommentDrafts, validate_draft, valid_article, response_json
+from comment_drafts import ContextCommentDrafts, validate_draft, valid_article, valid_comment_text, response_json
 
 BODY = ('人工智能可以辅助自我理解，但不应替代真实的人际交往。'
         '人们在与人工智能对话时，可能产生被理解的体验。'
@@ -49,8 +49,14 @@ class DraftTests(unittest.TestCase):
     def test_fabricated_evidence_is_rejected(self):
         self.assertIsNone(validate_draft(dict(DRAFT,evidence='正文根本没有这条引用依据。'),ARTICLE))
 
-    def test_unrelated_comment_fails_local_overlap_check(self):
-        self.assertIsNone(validate_draft(dict(DRAFT,comment='珍稀鸟类值得用心守护。',evidence='人们在与人工智能对话时'),ARTICLE))
+    def test_unrelated_comment_requires_semantic_review_and_is_rejected(self):
+        unrelated=dict(DRAFT,comment='珍稀鸟类值得用心守护。',evidence='人们在与人工智能对话时')
+        resolver=Mock(model='offline-model')
+        resolver._post.side_effect=[response(unrelated),response(dict(REVIEW,grounded=False,topic_related=False))]
+        drafts=ContextCommentDrafts(resolver)
+        self.assertIsNone(drafts.generate(ARTICLE))
+        self.assertEqual(drafts.last_error,'review_rejected')
+        self.assertEqual(resolver._post.call_count,2)
 
     def test_successful_generation_is_still_an_unapproved_draft(self):
         resolver=Mock(model='offline-model');resolver._post.side_effect=[response(DRAFT),response(REVIEW)]
@@ -95,5 +101,14 @@ class DraftTests(unittest.TestCase):
         self.assertEqual(drafts.last_error,'draft_failed_local_rules')
         resolver._post.side_effect=[response(DRAFT),response(dict(REVIEW,grounded=False))]
         self.assertIsNone(drafts.generate(ARTICLE));self.assertEqual(drafts.last_error,'review_rejected')
+
+    def test_familiar_ai_abbreviation_requires_source_and_other_english_is_not_allowed(self):
+        article=dict(ARTICLE,body=BODY.replace('人工智能','AI'))
+        text='觉得AI懂自己，其实是人的心理在起作用。'
+        value=dict(skip=False,comment=text,evidence='AI可以辅助自我理解，但不应替代真实的人际交往。')
+        self.assertIsNotNone(validate_draft(value,article))
+        self.assertIsNone(validate_draft(dict(value,evidence=DRAFT['evidence']),ARTICLE))
+        self.assertFalse(valid_comment_text('AIAIAI。'))
+        self.assertFalse(valid_comment_text('使用ChatGPT也要重视真实交流。'))
 
 if __name__=='__main__':unittest.main()
