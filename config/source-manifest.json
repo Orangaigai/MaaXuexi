@@ -174,7 +174,7 @@
   "backend/subscription_tasks.py": "5f8f2caf7dff04322a52503190ffac216be7665a96f2896a44440812dd0af476",
   "tests/test_subscriptions.py": "4a03d56e6398cc70ea79fe85d12230e98bb91abf6c23054469ab07add95a1f01",
   "tests/fixtures/subscriptions/catalog.json": "9da092ea2d8c2570cab630ca00886078bb42ca63725eb7540a7c9308b190490b",
-  "docs/订阅流程与验收.md": "36a9be74a22a49a6dd366933d6d6d506f116ea1b5cb10740fe43fc9aaecbe520",
+  "docs/订阅流程与验收.md": "b55f9209e4fcdf964454f9735e8f133085ef3920fc56256d72403d5863500ae3",
   ".gitignore": "77c57f5acd4beefdd152a7ea951cc20b876b60a6b511f780217f8162bb939735",
   "config/local-task-plan.example.json": "3e88245a67c7053556b6a8fb1f1c1b3643832b1ed722c92b1260b8fed115cac5",
   "tests/fixtures/subscriptions/catalog-selected.png": "5a51fbda95d2ec118469bde058410f678c3eeafc239403cd28e598f26ee20cf4"
