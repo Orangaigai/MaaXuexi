@@ -130,11 +130,25 @@ class SubscriptionTasks:
                 self._sub_label(records, '订阅', top=180, bottom=290)
                 return self._sub_wait(lambda rows:subscription_scene(rows) == 'mine')
             elif home_ready(records):
-                self._sub_label(records, '我的', left=600, top=35, bottom=120)
-                self._sub_wait(profile_page)
+                self._sub_open_profile(records)
             else:
                 raise TaskIncomplete('订阅返回路径不明确，未重开应用或盲目点击')
         raise TaskIncomplete('未能到达我的订阅，已保留页面')
+
+    def _sub_open_profile(self, records):
+        if not home_ready(records) or not self._app_in_foreground():
+            raise TaskIncomplete('订阅个人页入口只允许在已确认首页操作')
+        self._check_active()
+        self._guard_verification(records)
+        task = '订阅个人页入口'
+        result = self.tasker.post_task(task,{task:{
+            'recognition':'OCR','expected':['^我的$'],'roi':[642,35,78,80],
+            'action':'Click','timeout':5000,'pre_delay':0,'post_delay':0,
+        }}).wait().get()
+        if result.status.failed:
+            self._sub_evidence('profile-entry-unrecognized',self._sub_records())
+            raise TaskIncomplete('首页右上角我的入口未识别，已保留画面')
+        return self._sub_wait(profile_page)
 
     def _sub_catalog(self):
         records = self._sub_records()

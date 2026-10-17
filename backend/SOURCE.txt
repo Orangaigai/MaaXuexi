@@ -1,4 +1,4 @@
-MaaXuexi local revision local-20261017.6 (complete daily plan, live acceptance in progress)
+MaaXuexi local revision local-20261017.7 (complete daily plan, live acceptance in progress)
 Upstream: https://github.com/ravizhan/MaaXuexi
 Base version: v1.7.1
 Pinned upstream commit: ff6a0d5a811c5fc987a0c0ae77ea9abaf55fa073
@@ -8,11 +8,12 @@ Retained functions:
 - Candidate subscription module: one-account score checks, round-based SQLite cycle counts,
   cleanup of owned new follows, no post-cleanup score revisit (owner-confirmed behavior).
   Counts increment only after confirmed follow and cancellation. No per-account score history.
-  372 offline checks pass; live credit and nonempty cleanup remain under acceptance.
+  373 offline checks pass; live credit and nonempty cleanup remain under acceptance.
   Live .4 subscription run d29a0bb6628f stopped on real platform validation with 0/2.
   .5 uses the observed My/Add route and resolves failed pending intents without incrementing counts.
   .6 enables the six-task default plan, excludes owner pause time from subscription transitions,
   continues after a confirmed saved follow with no points, and resumes owned subscription details.
+  .7 isolates the home My button because full-screen OCR merged it with the adjacent AI icon.
 - Score checking, articles, videos, single/double/four-player fun quiz and daily quiz.
 - Choice, fill-in and click-to-fill daily questions; hint OCR and official DeepSeek.
 - Hidden launcher, one control page, local encrypted key, manual start/stop/continue.

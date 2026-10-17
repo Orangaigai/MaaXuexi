@@ -328,3 +328,16 @@ class FlowTests(unittest.TestCase):
         value._captcha_present=Mock(return_value=False)
         self.assertFalse(value._owner_resume_ready())
         self.assertTrue(value._owner_resume_ready())
+
+    def test_merged_ai_and_my_home_header_uses_isolated_my_recognition(self):
+        from test_optimization import worker
+        value=worker()
+        records=[dict(text='推荐',box=[20,124,59,32]),dict(text='要闻',box=[105,126,55,28]),
+                 dict(text='思想',box=[191,125,54,29]),dict(text='|A|我的',box=[556,58,146,27])]
+        value._sub_wait=Mock(return_value=[dict(text='学习积分'),dict(text='我要答题')])
+        value._sub_open_profile(records)
+        name,override=value.tasker.post_task.call_args.args
+        self.assertEqual(override[name]['roi'],[642,35,78,80])
+        self.assertEqual(override[name]['expected'],['^我的$'])
+        self.assertEqual(override[name]['action'],'Click')
+        value.tasker.controller.post_click.assert_not_called()
