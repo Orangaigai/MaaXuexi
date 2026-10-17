@@ -1,19 +1,24 @@
 """Public text limits, real UI fixtures, crash-safe send limits and dispatch."""
-import json
+import json,sys
 import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import Mock, patch
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
 
 import comment_tasks
 import task_support
 import webui
-from comment_tasks import COMMENT_TEXT, COMMENT_SCOPE, CommentJournal, comment_policy, comment_draft_ready, comment_feed
+from comment_tasks import COMMENT_MODE, COMMENT_SCOPE, CommentJournal, comment_policy, comment_draft_ready, comment_feed
 from task_support import TaskIncomplete, TaskUnavailable, parse_score_rows
 from test_optimization import worker
 
 FIXTURES = Path(__file__).parent/'fixtures/comments'
+DRAFT=json.loads((FIXTURES/'draft.json').read_text('utf-8'))
+COMMENT_TEXT=DRAFT['comment']
+ARTICLE=comment_tasks.comment_article(json.loads((FIXTURES/'article.json').read_text('utf-8')))
+PREPARED=dict(article=ARTICLE,draft=DRAFT)
 
 
 class CommentTests(unittest.TestCase):
@@ -27,7 +32,7 @@ class CommentTests(unittest.TestCase):
             patcher.start();self.addCleanup(patcher.stop)
 
     def approve(self, **changes):
-        value = dict(enabled=True, text=COMMENT_TEXT, scope=COMMENT_SCOPE)
+        value = dict(enabled=True, mode=COMMENT_MODE, scope=COMMENT_SCOPE)
         value.update(changes)
         comment_tasks.POLICY_PATH.write_text(json.dumps(value), encoding='utf-8')
 
@@ -40,35 +45,35 @@ class CommentTests(unittest.TestCase):
             comment_tasks.POLICY_PATH.write_text(value, encoding='utf-8')
             self.assertFalse(comment_policy()['enabled'])
 
-    def test_only_exact_text_and_exact_scope_with_boolean_consent_are_accepted(self):
+    def test_only_current_generation_mode_and_exact_scope_with_boolean_consent_are_accepted(self):
         self.approve();self.assertTrue(comment_policy()['enabled'])
-        for changes in (dict(text=COMMENT_TEXT+'支持！'),dict(scope='全部文章'),dict(enabled='true'),dict(enabled=1)):
+        for changes in (dict(mode='fixed_text'),dict(scope='全部文章'),dict(enabled='true'),dict(enabled=1)):
             self.approve(**changes);self.assertFalse(comment_policy()['enabled'])
 
     def test_reserved_attempt_survives_a_new_process_even_without_confirmation(self):
-        self.assertTrue(CommentJournal().reserve('生活科普文章'))
+        self.assertTrue(CommentJournal().reserve('生活科普文章',COMMENT_TEXT))
         other=CommentJournal()
-        self.assertFalse(other.reserve('另一篇文章'))
+        self.assertFalse(other.reserve('另一篇文章',COMMENT_TEXT))
         self.assertEqual(other.today()['state'],'attempted')
         other.credited();self.assertEqual(CommentJournal().today()['state'],'credited')
 
     def test_simultaneous_repeated_starts_can_reserve_only_once(self):
         with ThreadPoolExecutor(max_workers=4) as pool:
-            results=list(pool.map(lambda _: CommentJournal().reserve('科普文章'),range(4)))
+            results=list(pool.map(lambda _: CommentJournal().reserve('科普文章',COMMENT_TEXT),range(4)))
         self.assertEqual(sum(results),1)
 
     def test_real_editor_requires_exact_short_text_and_own_publish_button(self):
         records=self.load('ready.json')
-        self.assertEqual(comment_draft_ready(records)['text'],'发布')
+        self.assertEqual(comment_draft_ready(records,COMMENT_TEXT)['text'],'发布')
         for wrong in (COMMENT_TEXT+COMMENT_TEXT,'认真学习','好观点将会被优先展示'):
             altered=[dict(r,text=wrong) if r['text']==COMMENT_TEXT else r for r in records]
-            self.assertIsNone(comment_draft_ready(altered))
-        self.assertIsNone(comment_draft_ready(records+[dict(text='访问验证',box=[300,150,120,30])]))
-        self.assertIsNone(comment_draft_ready([r for r in records if r['text']!='发布']))
+            self.assertIsNone(comment_draft_ready(altered,COMMENT_TEXT))
+        self.assertIsNone(comment_draft_ready(records+[dict(text='访问验证',box=[300,150,120,30])],COMMENT_TEXT))
+        self.assertIsNone(comment_draft_ready([r for r in records if r['text']!='发布'],COMMENT_TEXT))
 
     def test_article_with_same_text_cannot_be_mistaken_for_editor(self):
         records=[dict(text=COMMENT_TEXT,box=[25,450,400,35]),dict(text='发布',box=[630,1210,50,30])]
-        self.assertIsNone(comment_draft_ready(records))
+        self.assertIsNone(comment_draft_ready(records,COMMENT_TEXT))
 
     def test_real_feed_is_distinct_from_article_and_captcha(self):
         records=self.load('feed.json')
@@ -94,14 +99,14 @@ class CommentTests(unittest.TestCase):
         value._prepare_comment_draft.assert_not_called()
 
     def test_ambiguous_previous_attempt_is_not_sent_again(self):
-        self.approve();CommentJournal().reserve('旧文章')
+        self.approve();CommentJournal().reserve('旧文章',COMMENT_TEXT)
         value=worker();value._prepare_comment_draft=Mock()
         with self.assertRaisesRegex(TaskIncomplete,'未重复发送'):value.publish_comment(dict(value=0,maximum=1))
         value._prepare_comment_draft.assert_not_called()
 
     def publication_worker(self, score):
         self.approve();value=worker()
-        value._prepare_comment_draft=Mock(return_value='生活科普文章')
+        value._prepare_comment_draft=Mock(return_value=PREPARED)
         value._comment_publish_target=Mock(return_value=dict(text='发布',box=[630,1210,50,30]))
         value._comment_click=Mock();value._comment_wait=Mock();value._comment_restore_home=Mock()
         value.read_learning_score=Mock(return_value={'发表观点':dict(value=score,maximum=1)})
@@ -129,7 +134,10 @@ class CommentTests(unittest.TestCase):
         with self.assertRaises(TaskIncomplete):value.publish_comment(dict(value=0,maximum=1))
         value._comment_click.assert_not_called();self.assertIsNone(CommentJournal().today())
         value=self.publication_worker(0)
-        value._prepare_comment_draft.side_effect=lambda:self.approve(enabled=False)
+        def revoke():
+            self.approve(enabled=False)
+            return PREPARED
+        value._prepare_comment_draft.side_effect=revoke
         with self.assertRaises(TaskIncomplete):value.publish_comment(dict(value=0,maximum=1))
         value._comment_click.assert_not_called();self.assertIsNone(CommentJournal().today())
 
@@ -143,11 +151,15 @@ class CommentTests(unittest.TestCase):
         self.assertEqual(value.run_report.snapshot()['status'],'completed')
 
     def test_expired_owner_verification_does_not_trigger_input_or_navigation_retry(self):
-        value=worker();value._comment_open_article=Mock(return_value='科普文章')
+        value=worker();value._comment_open_article=Mock(return_value=ARTICLE)
+        value.ai_resolver=Mock()
+        value._screen_records=Mock(return_value=self.load('article.json'))
         value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[36,1225,128,25])])
         value._comment_click=Mock()
         value._comment_wait=Mock(side_effect=task_support.HumanRequired('等待验证超时'))
-        with self.assertRaises(task_support.HumanRequired):value._prepare_comment_draft()
+        with patch('comment_tasks.ContextCommentDrafts') as generator:
+            generator.return_value.generate.return_value=DRAFT
+            with self.assertRaises(task_support.HumanRequired):value._prepare_comment_draft()
         value.tasker.controller.post_input_text.assert_not_called()
         value.tasker.controller.post_swipe.assert_not_called()
 
@@ -165,6 +177,17 @@ class CommentTests(unittest.TestCase):
         with patch.object(webui,'task_running',return_value=False):
             with self.assertRaisesRegex(Exception,'409'):webui.save_task_plan(webui.TaskModel(tasklist=['发表观点']))
         self.assertNotIn('强国运动',task_support.ALIASES)
+
+    def test_legacy_fixed_phrase_consent_cannot_enable_generated_comments(self):
+        comment_tasks.POLICY_PATH.write_text(json.dumps(dict(enabled=True,text='认真学习，增长知识。',scope=COMMENT_SCOPE)),encoding='utf-8')
+        self.assertFalse(comment_policy()['enabled'])
+
+    def test_owner_resume_recognizes_article_when_bottom_placeholder_ocr_is_clipped(self):
+        value=worker();value._last_comment_draft=PREPARED
+        value._screen_records=Mock(return_value=self.load('article.json'))
+        value._captcha_present=Mock(return_value=False)
+        self.assertFalse(value._owner_resume_ready())
+        self.assertTrue(value._owner_resume_ready())
 
 
 if __name__=='__main__':unittest.main()

@@ -1,4 +1,4 @@
-MaaXuexi local revision local-20261017.15 (fixed comment draft and opt-in gate)
+MaaXuexi local revision local-20261017.16 (article-grounded DeepSeek comment drafts)
 Upstream: https://github.com/ravizhan/MaaXuexi
 Base version: v1.7.1
 Pinned upstream commit: ff6a0d5a811c5fc987a0c0ae77ea9abaf55fa073
@@ -65,3 +65,6 @@ Live follow-up: support observed video_big cards, keep verified playback on miss
 .15: Owner-approved fixed comment only, science/life scope, one durable send reservation per day.
 413 offline checks passed. Full draft preparation and return verified; public send and credit pending owner approval.
 Exercise excluded. Saved seven-task daily plan remains active; comments are not enabled by default.
+
+.16: Owner rejected fixed text. Contextual science/life drafts use DeepSeek generation, literal source evidence, local constraints and model review.
+429 offline tests passed. Live route, generation, editor input and return accepted; sending and credit are not accepted or enabled.

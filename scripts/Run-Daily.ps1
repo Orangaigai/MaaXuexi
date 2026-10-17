@@ -44,7 +44,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Startup helper failed.' }
     $health = Invoke-RestMethod ($baseUrl+'/api/status') -TimeoutSec 10
     if (!$health.connected) { throw 'The emulator is not connected.' }
-    $answerTasks = @('\u6bcf\u65e5\u7b54\u9898','\u8da3\u5473\u7b54\u9898') | ForEach-Object { ('"'+$_+'"') | ConvertFrom-Json }
+    $answerTasks = @('\u6bcf\u65e5\u7b54\u9898','\u8da3\u5473\u7b54\u9898','\u53d1\u8868\u89c2\u70b9') | ForEach-Object { ('"'+$_+'"') | ConvertFrom-Json }
     if (@($taskNames | Where-Object { $_ -in $answerTasks }).Count -and !$health.api_key_configured) { throw 'DeepSeek API key is not configured.' }
     $payload = @{tasklist=$taskNames;fast_answer=$false;debug=$false;unattended=$true} | ConvertTo-Json -Compress
     $result = Invoke-RestMethod ($baseUrl+'/api/start') -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -TimeoutSec 10

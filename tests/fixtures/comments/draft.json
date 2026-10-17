@@ -1,0 +1,15 @@
+{
+  "comment": "被理解感源于人类认知机制被激活。",
+  "evidence": "揭示这种被理解感并非源于AI拥有情感，而是人类大脑的社会认知系统",
+  "title": "AI没有心，却让你动了心",
+  "scope": "科普中国/生活百科",
+  "status": "draft_for_owner_review",
+  "publish_authorized": false,
+  "review": {
+    "grounded": true,
+    "topic_related": true,
+    "neutral": true,
+    "within_scope": true
+  },
+  "model": "deepseek-flash"
+}

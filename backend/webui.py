@@ -164,7 +164,7 @@ def save_task_plan(plan: TaskModel):
         if not plan.tasklist:
             raise HTTPException(400,'至少选择一项任务。')
         if '发表观点' in plan.tasklist and not comment_policy()['enabled']:
-            raise HTTPException(409,'请先确认固定短句和每天发表范围，再加入定时清单。')
+            raise HTTPException(409,'请先确认按正文生成的规则和每天发表范围，再加入定时清单。')
         value = dict(tasklist=list(dict.fromkeys(plan.tasklist)),fast_answer=False,debug=False)
         path = Path('config/local-task-plan.json')
         path.parent.mkdir(parents=True,exist_ok=True)
@@ -234,9 +234,9 @@ def start_selected(tasks: TaskModel, daily_acceptance=False):
         if not tasks.tasklist:
             return dict(status='failed', message='请先选择任务')
         if '发表观点' in tasks.tasklist and not comment_policy()['enabled']:
-            return dict(status='failed', message='发表观点尚待确认固定短句和每日使用范围，未启动发表。')
-        if any(name in tasks.tasklist for name in ('每日答题','趣味答题')) and not key_configured():
-            return dict(status='failed', message='答题任务需要先配置 DeepSeek 密钥。')
+            return dict(status='failed', message='发表观点尚待确认按正文生成的规则和每日使用范围，未启动发表。')
+        if any(name in tasks.tasklist for name in ('每日答题','趣味答题','发表观点')) and not key_configured():
+            return dict(status='failed', message='答题或观点草稿任务需要先配置 DeepSeek 密钥。')
         tasks.tasklist = list(dict.fromkeys(tasks.tasklist))
         worker.stop_flag = False
         worker.pause_flag = False

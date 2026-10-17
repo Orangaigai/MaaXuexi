@@ -1,4 +1,4 @@
-"""One owner-approved, fixed comment per day. No generative model is involved."""
+"""One contextual short comment per day under an owner-approved scope and policy."""
 import json
 import re
 import sqlite3
@@ -9,9 +9,10 @@ from pathlib import Path
 
 from daily_flow import verification_visible
 from home_navigation import home_ready
+from comment_drafts import ContextCommentDrafts, valid_comment_text, validate_draft, valid_article
 from task_support import TaskIncomplete, TaskUnavailable, is_complete
 
-COMMENT_TEXT = '认真学习，增长知识。'
+COMMENT_MODE = 'article_context_v1'
 COMMENT_SCOPE = '科普中国/生活百科'
 POLICY_PATH = Path('config/comment-policy.json')
 JOURNAL_PATH = Path('config/comments.sqlite3')
@@ -23,8 +24,9 @@ def comment_policy():
     except (OSError, ValueError):
         value = {}
     enabled = (isinstance(value, dict) and value.get('enabled') is True
-               and value.get('text') == COMMENT_TEXT and value.get('scope') == COMMENT_SCOPE)
-    return dict(enabled=enabled, text=COMMENT_TEXT, scope=COMMENT_SCOPE, daily_limit=1)
+               and value.get('mode') == COMMENT_MODE and value.get('scope') == COMMENT_SCOPE)
+    return dict(enabled=enabled, mode=COMMENT_MODE, scope=COMMENT_SCOPE, daily_limit=1,
+                min_chars=8, max_chars=20, model_review=True)
 
 
 class CommentJournal:
@@ -52,10 +54,12 @@ class CommentJournal:
                              (datetime.now().date().isoformat(),)).fetchone()
             return dict(row) if row else None
 
-    def reserve(self, article):
+    def reserve(self, article, text):
+        if not valid_comment_text(text):
+            raise TaskIncomplete('观点内容未满足短评规则，未占用发布额度')
         with self._connect() as db:
             result = db.execute('INSERT OR IGNORE INTO comments VALUES(?,?,?,?,?)',
-                (datetime.now().date().isoformat(), article, COMMENT_TEXT, 'attempted',
+                (datetime.now().date().isoformat(), article, text, 'attempted',
                  datetime.now().astimezone().isoformat(timespec='seconds')))
             return result.rowcount == 1
 
@@ -72,16 +76,28 @@ def comment_feed(records):
     return {'科普中国', '生活百科', '科学求真', '三农科普'} <= top
 
 
-def comment_draft_ready(records):
+def comment_draft_ready(records, expected_text):
     """Both the whole input text and its own publish button must be recognized."""
-    if verification_visible(records):
+    if verification_visible(records) or not valid_comment_text(expected_text):
         return None
     text = [r for r in records if 25 <= r['box'][0] < 580 and 1100 <= r['box'][1] < 1190]
     buttons = [r for r in records if r['text'].strip() == '发布'
                and 600 <= r['box'][0] < 700 and 1200 <= r['box'][1] < 1265]
-    if len(text) == 1 and re.sub(r'\s+', '', text[0]['text']) == COMMENT_TEXT and len(buttons) == 1:
+    if len(text) == 1 and re.sub(r'\s+', '', text[0]['text']) == expected_text and len(buttons) == 1:
         return buttons[0]
     return None
+
+
+def comment_article(records):
+    if verification_visible(records) or comment_feed(records):
+        return None
+    titles = [r for r in records if 150 <= r['box'][1] < 250 and r['box'][0] < 100]
+    if len(titles) != 1:
+        return None
+    body = ''.join(r['text'] for r in sorted(records, key=lambda r:r['box'][1])
+                   if 250 <= r['box'][1] < 1100)
+    article = dict(title=titles[0]['text'], body=body, scope=COMMENT_SCOPE)
+    return article if valid_article(article) else None
 
 
 class CommentTasks:
@@ -173,8 +189,11 @@ class CommentTasks:
                 def loaded(rs):
                     body = ''.join(r['text'] for r in rs if 250 <= r['box'][1] < 1080)
                     return '来源' in body and len(body) >= 60
-                self._comment_wait(loaded, timeout=45)
-                return title
+                records = self._comment_wait(loaded, timeout=45)
+                article = comment_article(records)
+                if article is None:
+                    raise TaskUnavailable('文章不适合自动短评或正文未明确识别，本日不发表')
+                return article
             if page < 2:
                 self.tasker.controller.post_swipe(350, 1090, 350, 550, 450).wait()
                 self._sleep(.7)
@@ -182,6 +201,16 @@ class CommentTasks:
 
     def _prepare_comment_draft(self):
         article = self._comment_open_article()
+        self.send_log('观点草稿：按正文生成8～20字短评，再独立复核；不合格则跳过')
+        drafts = ContextCommentDrafts(self.ai_resolver)
+        self._comment_draft_engine = drafts
+        draft = drafts.generate(article)
+        self._check_active()
+        if draft is None:
+            raise TaskIncomplete('观点草稿或复核未通过：'+str(drafts.last_error)+'；本项跳过，不重复生成')
+        current_article = comment_article(self._screen_records())
+        if current_article is None or current_article['title'] != article['title']:
+            raise TaskIncomplete('生成短评后文章页面发生变化，未在其他文章输入')
         entry = self._comment_ocr('观点输入栏', [20, 1200, 455, 75])
         entry = [r for r in entry if r['text'].strip() in ('欢迎发表观点', '欢迎发表你的观点', '发表观点')]
         if len(entry) != 1:
@@ -202,17 +231,18 @@ class CommentTasks:
                 raise TaskIncomplete('观点输入栏短按未成功')
             self._comment_wait(empty, timeout=8)
         self._comment_click(dict(box=[30, 1110, 650, 85]))
-        if not self.tasker.controller.post_input_text(COMMENT_TEXT).wait().succeeded:
-            raise TaskIncomplete('固定观点短句未输入成功')
+        if not self.tasker.controller.post_input_text(draft['comment']).wait().succeeded:
+            raise TaskIncomplete('观点短评未输入成功')
         # Input completion and actual redraw are separate; wait for the real text.
-        self._comment_wait(lambda _: self._comment_publish_target() is not None, timeout=15)
-        self.send_log('观点草稿已核对：'+COMMENT_TEXT+'；范围：'+COMMENT_SCOPE)
-        return article
+        self._comment_wait(lambda _: self._comment_publish_target(draft['comment']) is not None, timeout=15)
+        self.send_log('观点草稿已核对：'+draft['comment']+'；文章：'+article['title'])
+        self._last_comment_draft = dict(article=article, draft=draft)
+        return self._last_comment_draft
 
-    def _comment_publish_target(self):
+    def _comment_publish_target(self, expected_text):
         records = self._comment_ocr('观点文字核对', [25, 1105, 670, 90])
         records += self._comment_ocr('观点发布按钮', [600, 1200, 100, 70])
-        return comment_draft_ready(records)
+        return comment_draft_ready(records, expected_text)
 
     def _comment_restore_home(self):
         self._guard_verification()
@@ -233,21 +263,23 @@ class CommentTasks:
         if before['maximum'] != 1:
             raise TaskIncomplete('发表观点计分规则已变化，需要核实')
         if not comment_policy()['enabled']:
-            raise TaskUnavailable('固定短句及每日发表范围尚未获本人确认，未发布')
+            raise TaskUnavailable('按正文生成规则及每日发表范围尚未获本人确认，未发布')
         journal = CommentJournal()
         if journal.today():
             raise TaskIncomplete('今天已有发表尝试记录，未重复发送；请查看积分与评论结果')
-        self.send_log('发表观点：仅用固定短句，每天最多一条，不调用模型生成')
-        article = self._prepare_comment_draft()
+        self.send_log('发表观点：科普生活正文短评、规则检查及模型复核，每天最多一条')
+        prepared = self._prepare_comment_draft()
         self._check_active()
-        button = self._comment_publish_target()
-        if button is None or not comment_policy()['enabled']:
-            raise TaskIncomplete('发布前短句或授权核对失败，未点击发布')
-        if not journal.reserve(article):
+        article, draft = prepared['article'], prepared['draft']
+        valid = validate_draft(dict(skip=False, **draft), article)
+        button = self._comment_publish_target(draft['comment'])
+        if valid is None or button is None or not comment_policy()['enabled']:
+            raise TaskIncomplete('发布前短评或授权核对失败，未点击发布')
+        if not journal.reserve(article['title'], draft['comment']):
             raise TaskIncomplete('今天已有发表尝试，未重复发送')
         # The durable reservation deliberately remains even if the click times out.
         self._comment_click(button)
-        self._comment_wait(lambda _: self._comment_publish_target() is None)
+        self._comment_wait(lambda _: self._comment_publish_target(draft['comment']) is None)
         self._comment_restore_home()
         self._score_refresh_required = True
         after = self.read_learning_score(['发表观点'])['发表观点']
