@@ -56,6 +56,19 @@ def subscription_accounts(records):
     return sorted(result, key=lambda row:row['button']['box'][1])
 
 
+def category_selected(records, image, category):
+    """The native left rail marks only its active category with a red vertical bar."""
+    rows=[r for r in records if r['box'][0]<140 and r['text'].strip()==category]
+    if len(rows)!=1 or image is None or image.shape[:2]!=(1280,720):
+        return False
+    _,y,_,height=rows[0]['box']
+    pixels=image[max(120,y-15):min(1200,y+height+15),:10,:3].astype('int16')
+    if not pixels.size:
+        return False
+    blue,green,red=pixels[:,:,0],pixels[:,:,1],pixels[:,:,2]
+    return int(((red>180)&(red>green+60)&(red>blue+60)).sum())>=20
+
+
 class SubscriptionTasks:
     def _sub_evidence(self, tag, records):
         report = getattr(self,'run_report',None)
@@ -177,8 +190,7 @@ class SubscriptionTasks:
             records = self._sub_records()
             if subscription_scene(records) != 'catalog':
                 raise TaskIncomplete('选择订阅分类前页面已改变')
-            self._sub_label(records, category, right=140)
-            self._sleep(.4)
+            self._sub_select_category(records,category)
             seen_pages = set()
             for _ in range(PAGES_PER_CATEGORY):
                 records = self._sub_records()
@@ -200,6 +212,23 @@ class SubscriptionTasks:
                 self._sleep(.4)
         self._sub_scan_observed = len(observed)
         return None
+
+    def _sub_select_category(self, records, category):
+        if subscription_scene(records)!='catalog' or not self._app_in_foreground():
+            raise TaskIncomplete('选择订阅分类前未确认目录页')
+        self._check_active();self._guard_verification(records)
+        task='订阅分类入口'
+        result=self.tasker.post_task(task,{task:{
+            'recognition':'OCR','expected':['^'+re.escape(category)+'$'],
+            'roi':[0,120,140,1060],'action':'Click','timeout':8000,
+            'pre_delay':0,'post_delay':0,
+        }}).wait().get()
+        if result.status.failed:
+            self._sub_evidence('category-entry-unrecognized',self._sub_records())
+            raise TaskIncomplete('订阅分类未加载或无法识别：'+category)
+        self._sleep(.8)
+        return self._sub_wait(lambda rows:subscription_scene(rows)=='catalog' and
+            category_selected(rows,self.tasker.controller.cached_image,category))
 
     def _sub_follow(self, account, store, before):
         records = self._sub_records()

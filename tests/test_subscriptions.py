@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
 from subscription_store import SubscriptionStore, account_key
-from subscription_tasks import SubscriptionTasks, subscription_accounts, subscription_scene, owned_detail, MAX_ATTEMPTS
+from subscription_tasks import SubscriptionTasks, subscription_accounts, subscription_scene, owned_detail, category_selected, MAX_ATTEMPTS
 from task_support import RunReport, TaskIncomplete, HumanRequired, ordered_tasks, parse_score_rows
 import task_support
 
@@ -89,6 +89,13 @@ class HistoryTests(unittest.TestCase):
 
 
 class RecognitionTests(unittest.TestCase):
+    def test_observed_red_category_marker_distinguishes_waiting_from_recommended(self):
+        import numpy as np
+        from PIL import Image
+        records=json.loads((FIXTURES/'catalog.json').read_text('utf-8'))
+        image=np.asarray(Image.open(FIXTURES/'catalog-selected.png').convert('RGB'))[:,:,::-1]
+        self.assertTrue(category_selected(records,image,'待订阅'))
+        self.assertFalse(category_selected(records,image,'推荐'))
     def test_observed_catalog_pairs_headers_in_visual_order(self):
         records=json.loads((FIXTURES/'catalog.json').read_text('utf-8'))
         self.assertEqual(subscription_scene(records),'catalog')
@@ -341,3 +348,14 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(override[name]['expected'],['^我的$'])
         self.assertEqual(override[name]['action'],'Click')
         value.tasker.controller.post_click.assert_not_called()
+
+    def test_category_waits_in_its_own_rail_when_full_screen_text_is_not_ready(self):
+        from test_optimization import worker
+        value=worker()
+        records=[dict(text='强国号',box=[245,65,80,32]),dict(text='地方平台',box=[365,68,105,30])]
+        value._sub_wait=Mock(return_value=records);value._sleep=Mock()
+        value._sub_select_category(records,'待订阅')
+        name,override=value.tasker.post_task.call_args.args
+        self.assertEqual(override[name]['roi'],[0,120,140,1060])
+        self.assertEqual(override[name]['expected'],['^待订阅$'])
+        self.assertEqual(override[name]['timeout'],8000)

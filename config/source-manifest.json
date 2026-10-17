@@ -12,8 +12,8 @@
   "backend/provider_support.py": "44644a3373360886414114ecab4a094a1efb965bb82c25f152a83e88098c3b91",
   "backend/requirements-runtime.lock.txt": "aa9a69ae290c505e888e5fb00093fb8f6f7c2dd003a986ad13fcf330db0d2fd8",
   "backend/score_navigation.py": "ee955430fe31559e842180ed2f82d4f2e89e21697febe51c19676addfb9387ec",
-  "backend/SOURCE.txt": "d7eb4d31e1d1af39d0bef2df8a4c7c6f3b0cf9f121a69c24b4f6f42a6e2d0c47",
-  "backend/task_support.py": "d3457960c3a294942b1dd78ebc63931812a2f9db2d48d296ea62b827c5626c49",
+  "backend/SOURCE.txt": "0a483529d232482d9b71b261446d98d396b270cc77b2f69a65f2e2ca07c5b670",
+  "backend/task_support.py": "9b69262eef6a4740f6dc325925783061b4ac116ca289f322dbf2e36cd561e6b9",
   "backend/utils.py": "4c761f65db75159c3a90ea753401a77e0e199c6be6d5ac9fd34539e21c13e525",
   "backend/webui.py": "62e637de11ebcf60dd0ca20c6f1084c1a5a99dd32278d934cf32554daa24e4d9",
   "scripts/Configure-Key.ps1": "b157fe1dd08de7981031f08051ec1a646a958cc79a249da6b8fcc3e1a4cef750",
@@ -171,10 +171,11 @@
   "tests/test_selected_completion.py": "c3c8c76140f4f4b98a3d0b182e3c6ebf2546f0936dda8589bfb7e0605c3d6af6",
   "tests/fixtures/daily-flow-20261017/completion-selected-no-labels.json": "ba3f1829e51080028931932161095921e8978490a34bf4df173ec02b637e5405",
   "backend/subscription_store.py": "0d78d51647774bee75076a241116066bbd452d789249378b8454aa0196d782ed",
-  "backend/subscription_tasks.py": "eb38b8b7765d6e82e386cb6bcd8c8180ff9ba919bb97d92e713ad9a018110480",
-  "tests/test_subscriptions.py": "8c6e9a184a4230079107c123f21fbd8bfa2bf4ecec47be4cc99559adcccf6f45",
+  "backend/subscription_tasks.py": "5f8f2caf7dff04322a52503190ffac216be7665a96f2896a44440812dd0af476",
+  "tests/test_subscriptions.py": "4a03d56e6398cc70ea79fe85d12230e98bb91abf6c23054469ab07add95a1f01",
   "tests/fixtures/subscriptions/catalog.json": "9da092ea2d8c2570cab630ca00886078bb42ca63725eb7540a7c9308b190490b",
-  "docs/订阅流程与验收.md": "3ceaad7b9ad92413c92f153c1eef090182c415a1829d4122fe502ef25507d5bb",
+  "docs/订阅流程与验收.md": "36a9be74a22a49a6dd366933d6d6d506f116ea1b5cb10740fe43fc9aaecbe520",
   ".gitignore": "77c57f5acd4beefdd152a7ea951cc20b876b60a6b511f780217f8162bb939735",
-  "config/local-task-plan.example.json": "3e88245a67c7053556b6a8fb1f1c1b3643832b1ed722c92b1260b8fed115cac5"
+  "config/local-task-plan.example.json": "3e88245a67c7053556b6a8fb1f1c1b3643832b1ed722c92b1260b8fed115cac5",
+  "tests/fixtures/subscriptions/catalog-selected.png": "5a51fbda95d2ec118469bde058410f678c3eeafc239403cd28e598f26ee20cf4"
 }
