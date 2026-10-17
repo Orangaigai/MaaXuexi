@@ -302,7 +302,20 @@ class ContentTasks:
         raise TaskIncomplete("无法读取视频实际播放进度，已停止计时")
 
     def _watch_video_segment(self, limit):
-        previous = self._video_progress()
+        try:
+            previous = self._video_progress()
+        except HumanRequired:
+            raise
+        except TaskIncomplete:
+            if not self._content_page_ready('video'):
+                raise
+            diagnostic = getattr(self, 'diagnostics', None)
+            if diagnostic is not None:
+                records = self._screen_records()
+                self._guard_verification(records)
+                diagnostic.capture('video-progress-missing', records, self.tasker.controller.cached_image)
+            self.send_log('本片起始进度不可读，切换下一片；未确认时间不计入')
+            return 0
         watched, stalled = 0, 0
         while watched < limit and previous["position"] < previous["total"]:
             self._check_active()

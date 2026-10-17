@@ -1,7 +1,7 @@
 {
   "backend/answer_client.py": "73c9c37afc45964da34fe4e23a97cf00972fa162f1542ca92e1d47c3db119847",
   "backend/api-key.html": "472010202352b20583d17e6b1208152463b003e23009b0814010a3f834a4e791",
-  "backend/content_tasks.py": "a4b877e07bfdaaa7f62d1f08d771594307a5d01eecae87cbd37ce75275f3b591",
+  "backend/content_tasks.py": "7635c8423fc164de2ff597ad9f3b212d6d4fd063419007437bbaa627d3424f15",
   "backend/daily_flow.py": "4b42c626d9226934c7cdbcede1c5cdc1bb5f93b791b40d020f9fba28c8f0e344",
   "backend/daily_hints.py": "6afd47186dc9aad331d0be06c14e253348ab31855242e623ab304b2484938193",
   "backend/device_support.py": "9a597b83e2b157e70bf993eb3f337178e04ff5ce48d7a95ebeab25aa77fba030",
@@ -13,7 +13,7 @@
   "backend/requirements-runtime.lock.txt": "aa9a69ae290c505e888e5fb00093fb8f6f7c2dd003a986ad13fcf330db0d2fd8",
   "backend/score_navigation.py": "ee955430fe31559e842180ed2f82d4f2e89e21697febe51c19676addfb9387ec",
   "backend/SOURCE.txt": "d1eeb6bd9faf86a6f264ad8120f054cedbc00741a1c8c118d7c8860948683e9e",
-  "backend/task_support.py": "b8a8f3b1cbfe91d1b3fce3b15404c265540e69beb3356bf62cf1410c5b787a8d",
+  "backend/task_support.py": "7bbebcae07a9950049fd2603fdb8ae000ce7aa370f7bcd6f6e6d2eaf172dfb1b",
   "backend/utils.py": "7aae1cfefa7cf753e83d75bb2841bf33b2d5c5f9609c37bfeeca9851e8b59a93",
   "backend/webui.py": "d2a780080e3ee294b41a0e301c7c5ade329d6d45b2654014cd20925dfe023b39",
   "scripts/Configure-Key.ps1": "b157fe1dd08de7981031f08051ec1a646a958cc79a249da6b8fcc3e1a4cef750",
@@ -164,7 +164,7 @@
   "自检MaaXuexi.cmd": "2a14cb5f560c9ea4ab8a9f3829c126671edc7bfc2ef08c2a339c34da19dd5bf8",
   "配置答题密钥.cmd": "2f3f10ddd3bd9b72c6f19c41bf844a74bebef8ec24c3bb749f1dc192cc87c8fa",
   "tests/test_choice_scroll.py": "a285aa443e1614db040fc3d4b3ddde6c3ae41bb27ad40f4cf327e0fc127a810d",
-  "tests/test_video_transition.py": "2b1ce5391f48103f0e61a2f4d89a337366f97bfe1c30cc197fbf8818d74afdb1",
+  "tests/test_video_transition.py": "b4c4c57549592876209c7a3cf819ae1ece7ea68e3721de21da760969080329eb",
   "docs/开源项目对比与扩展建议.md": "bf2dd5981535848ddf0472286f5e684263623b0e938397e44c5b954833bf44de",
   "docs/后续改进与继续事项.md": "4e313182ed6a12d7b7af5ae43f8451a91bb06f05f4d6919baa677094b97aabea",
   "tests/test_owner_continuation.py": "a0e582a96673ab7f107c6d03f0a78e3c9007c8b2a31e26e900205fc5d24ad8fa",
@@ -187,7 +187,7 @@
   "tests/fixtures/local-channel/location-intro.json": "02937f7c5c56d8cfccf64f1e513b6f3312b9a8fb784a8f1f1c841b1920660755",
   "tests/fixtures/local-channel/merged-platform.json": "5480f4aecd1762ef9cda64d90afe6d4e2b2a49787359507340e3ffd7e29c6383",
   "docs/积分扩展研究与验收-20261017.md": "8edc08b2ad1339e1e86a53c55db6bb2f2f3be012ab2557d580aae2c8286ce04b",
-  "backend/comment_tasks.py": "72bcafcc7d7510a6f296b38e54d844dcd1d7a5de686d785357be44508f2a69a6",
+  "backend/comment_tasks.py": "6d414913079bc8fefaabc1e53e4330745886c3ef299f4cfdccc977d7a0df1bd3",
   "tests/test_comments.py": "83f0ee4bfe7e894af1417ae99f082c3521ea7fe8e6761a95b1fc5f01bb18d57d",
   "tests/fixtures/comments/feed.json": "8164d316a8300573bbc0d803a0032859a3ca0e3399eb044d076ee6cb61fd5c22",
   "tests/fixtures/comments/ready.json": "1e004d82536c13c879e2c527287be7bcfb09153d03ba6c6d64d6a162dfe12176",
@@ -219,5 +219,9 @@
   "tests/fixtures/model-eval/race-feedback.png": "bbda82b68dbd32fc9d29e8aa712f3e3eca5f9a1db363eaab4bedb6543f5fd51f",
   "docs/每日文字分流与模型对比-20261018.md": "0f72893444262a6c9bb9c7197ae321557239a58aa34c2f32640986dde555ba10",
   "tests/test_full_flow_order.py": "5befed47a64c6e3cd150e6fd91a208c622c64d8995f6eb236cee178fd6eba58f",
-  "docs/连续流程验收-20261018.md": "d600b7b928203c0757b617e788c13f76dd2d9402be7088b97ce32e8db96683ed"
+  "docs/连续流程验收-20261018.md": "d600b7b928203c0757b617e788c13f76dd2d9402be7088b97ce32e8db96683ed",
+  "tests/test_scrolled_comment_feed.py": "916f4826b06d3f50dd38e56ba518544ea5c6ff410cc89fb191ff124e75dc3bbb",
+  "tests/fixtures/comments/feed-collapsed.png": "f9c82f2e18ef173b086be3edc947d591e32e10cce72aa03f4cf489518518e417",
+  "tests/fixtures/comments/feed-collapsed.json": "7d1a57a9307318cf7eccf0ec03bb80d5bb9801f9d93c6bdbf57e21cf365e14a7",
+  "tests/fixtures/comments/article-late.json": "5aefad14a54268dad46c41dcabc5b8ca7450474e66af302d2b72d0f42a0aef6a"
 }

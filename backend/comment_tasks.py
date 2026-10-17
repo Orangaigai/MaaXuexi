@@ -73,17 +73,24 @@ class CommentJournal:
             return [r['article'] for r in db.execute('SELECT DISTINCT article FROM comments')]
 
 
+def article_title_key(text):
+    return re.sub(r'\W+', '', text)
+
+
 def comment_card_used(signature, titles):
-    compact = lambda text: re.sub(r'\W+', '', text)
-    card = compact(signature)
-    return any(len(compact(title)) >= 4 and compact(title) in card for title in titles)
+    card = article_title_key(signature)
+    return any(len(article_title_key(title)) >= 4 and article_title_key(title) in card for title in titles)
 
 
-def comment_feed(records):
+def comment_feed(records, *, allow_collapsed=False):
     if verification_visible(records):
         return False
     top = {r['text'].strip() for r in records if r['box'][1] < 250}
-    return {'科普中国', '生活百科', '科学求真', '三农科普'} <= top
+    if {'科普中国', '生活百科', '科学求真', '三农科普'} <= top:
+        return True
+    channels = {r['text'].strip() for r in records if 100 <= r['box'][1] < 180}
+    return (allow_collapsed and '科普中国' in channels
+            and len(channels & {'行走中国', '乡村振兴', '科普中国', '国际', '经济'}) >= 3)
 
 
 def comment_draft_ready(records, expected_text):
@@ -101,6 +108,10 @@ def comment_draft_ready(records, expected_text):
 def comment_article(records):
     if verification_visible(records) or comment_feed(records):
         return None
+    sources = [r for r in records if 250 <= r['box'][1] < 400 and r['box'][0] < 200
+               and re.match(r'^来源[：:]', r['text'].strip())]
+    if len(sources) != 1:
+        return None
     titles = [r for r in records if 150 <= r['box'][1] < 250 and r['box'][0] < 100]
     if len(titles) != 1:
         return None
@@ -111,6 +122,26 @@ def comment_article(records):
 
 
 class CommentTasks:
+    def _comment_life_feed(self, records):
+        """Vertical scrolling can hide the verified Life subchannel header."""
+        confirmed = getattr(self, '_comment_life_selected', False)
+        if not comment_feed(records, allow_collapsed=confirmed):
+            return False
+        expanded = comment_feed(records)
+        text, top, bottom = ('生活百科', 180, 250) if expanded else ('科普中国', 100, 180)
+        labels = [r for r in records if r['text'].strip() == text and top <= r['box'][1] < bottom]
+        image = self.tasker.controller.cached_image
+        if len(labels) != 1 or image is None or image.shape[:2] != (1280, 720):
+            return False
+        x, y, width, height = labels[0]['box']
+        pixels = image[y:y+height, x:x+width, :3].astype('int16')
+        red = ((pixels[:, :, 2] > 160) & (pixels[:, :, 2] > pixels[:, :, 1]+50)
+               & (pixels[:, :, 2] > pixels[:, :, 0]+50))
+        if int(red.sum()) < 12:
+            return False
+        self._comment_life_selected = True
+        return True
+
     def _comment_ocr(self, name, roi):
         self._check_active()
         self._guard_verification()
@@ -163,32 +194,26 @@ class CommentTasks:
         if image is None or image.shape[:2] != (1280, 720):
             raise TaskIncomplete('发表观点暂只支持已验收的720×1280界面')
         if not any(r['text'].strip() == '全部频道' for r in records):
-            if not home_ready(records) and not comment_feed(records):
+            if not home_ready(records) and not self._comment_life_feed(records):
                 raise TaskIncomplete('尚未确认首页频道栏，不点击频道菜单')
             self._comment_click(dict(box=[615, 120, 38, 44]))
         return self._comment_wait(lambda rs: any(r['text'].strip() == '全部频道' for r in rs))
 
     def _comment_open_article(self):
+        self._comment_life_selected = False
         used_titles = CommentJournal().used_articles()
         self._reset_home()
         records = self._comment_channel_menu(self._screen_records())
         self._comment_click(self._comment_label(records, '科普中国', 180, 1100))
         records = self._comment_wait(comment_feed)
         self._comment_click(self._comment_label(records, '生活百科', 180, 250))
-        self._comment_wait(comment_feed)
+        self._comment_wait(self._comment_life_feed)
         self._sleep(1)
         for page in range(3):
             records = self._screen_records()
             self._guard_verification(records)
-            if not comment_feed(records):
+            if not self._comment_life_feed(records):
                 raise TaskIncomplete('未确认科普中国生活百科列表，未选择其他文章')
-            # Confirm the selected subchannel by its red native label.
-            label = self._comment_label(records, '生活百科', 180, 250)
-            x, y, width, height = label['box']
-            pixels = self.tasker.controller.cached_image[y:y+height, x:x+width, :3].astype('int16')
-            if int(((pixels[:, :, 2] > 160) & (pixels[:, :, 2] > pixels[:, :, 1]+50)
-                    & (pixels[:, :, 2] > pixels[:, :, 0]+50)).sum()) < 12:
-                raise TaskIncomplete('生活百科尚未选中，停止观点任务')
             boxes, kinds = self.detect()
             for box, kind in zip(boxes, kinds):
                 if kind not in ('article', 'article_image') or not 250 <= box[1] < 1080:
@@ -200,14 +225,8 @@ class CommentTasks:
                     self.send_log('观点：跳过本机已有发表尝试的文章，避免在同一篇下重复留言')
                     continue
                 self._comment_click(dict(box=[int(box[0])+20, int(box[1])+30, min(350, int(box[2])-20), 50]))
-                def loaded(rs):
-                    body = ''.join(r['text'] for r in rs if 250 <= r['box'][1] < 1080)
-                    return '来源' in body and len(body) >= 60
-                records = self._comment_wait(loaded, timeout=45)
-                article = comment_article(records)
-                if article is None:
-                    raise TaskUnavailable('文章不适合自动短评或正文未明确识别，本日不发表')
-                return article
+                records = self._comment_wait(lambda rs: comment_article(rs) is not None, timeout=45)
+                return comment_article(records)
             if page < 2:
                 self.tasker.controller.post_swipe(350, 1090, 350, 550, 450).wait()
                 self._sleep(.7)
@@ -222,8 +241,16 @@ class CommentTasks:
         self._check_active()
         if draft is None:
             raise TaskIncomplete('观点草稿或复核未通过：'+str(drafts.last_error)+'；本项跳过，不重复生成')
-        current_article = comment_article(self._screen_records())
-        if current_article is None or current_article['title'] != article['title']:
+        records = self._screen_records()
+        current_article = comment_article(records)
+        report = getattr(self, 'run_report', None)
+        if report is not None:
+            report.task('发表观点', article_identity=dict(expected=article['title'],
+                        observed=current_article['title'] if current_article else None))
+        if current_article is None or article_title_key(current_article['title']) != article_title_key(article['title']):
+            diagnostic = getattr(self, 'diagnostics', None)
+            if diagnostic is not None:
+                diagnostic.capture('comment-identity', records, self.tasker.controller.cached_image)
             raise TaskIncomplete('生成短评后文章页面发生变化，未在其他文章输入')
         entry = self._comment_ocr('观点输入栏', [20, 1200, 455, 75])
         entry = [r for r in entry if r['text'].strip() in ('欢迎发表观点', '欢迎发表你的观点', '发表观点')]
@@ -265,7 +292,7 @@ class CommentTasks:
         if not any('发表观点' in r['text'] for r in entry):
             raise TaskIncomplete('观点提交后未回到普通文章页，保留现场，不重复发表')
         self.tasker.post_task('返回').wait()
-        records = self._comment_wait(comment_feed)
+        records = self._comment_wait(self._comment_life_feed)
         records = self._comment_channel_menu(records)
         self._comment_click(self._comment_label(records, '推荐', 180, 1100))
         self._wait_home_ready(timeout=20)

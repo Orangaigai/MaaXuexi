@@ -75,5 +75,22 @@ class VideoTransitionTests(unittest.TestCase):
         with self.assertRaises(HumanRequired):
             value._watch_video_segment(65)
 
+    def test_new_clip_without_readable_progress_switches_without_counting_time(self):
+        value=self.value(TaskIncomplete('unused'))
+        value._video_progress=Mock(side_effect=TaskIncomplete('initial progress missing'))
+        self.assertEqual(value._watch_video_segment(65),0)
+        value._sleep.assert_not_called()
+
+    def test_missing_initial_progress_on_lost_page_still_stops(self):
+        value=self.value(TaskIncomplete('unused'))
+        value._video_progress=Mock(side_effect=TaskIncomplete('initial progress missing'))
+        value._content_page_ready=Mock(return_value=False)
+        with self.assertRaises(TaskIncomplete):value._watch_video_segment(65)
+
+    def test_initial_verification_never_becomes_a_skipped_clip(self):
+        value=self.value(TaskIncomplete('unused'))
+        value._video_progress=Mock(side_effect=HumanRequired('本人验证'))
+        with self.assertRaises(HumanRequired):value._watch_video_segment(65)
+
 
 if __name__=='__main__':unittest.main()
