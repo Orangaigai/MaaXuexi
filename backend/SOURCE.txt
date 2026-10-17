@@ -1,4 +1,4 @@
-MaaXuexi local revision local-20261017.16 (article-grounded DeepSeek comment drafts)
+MaaXuexi local revision local-20261017.17 (contextual comments with article history)
 Upstream: https://github.com/ravizhan/MaaXuexi
 Base version: v1.7.1
 Pinned upstream commit: ff6a0d5a811c5fc987a0c0ae77ea9abaf55fa073
@@ -68,3 +68,6 @@ Exercise excluded. Saved seven-task daily plan remains active; comments are not 
 
 .16: Owner rejected fixed text. Contextual science/life drafts use DeepSeek generation, literal source evidence, local constraints and model review.
 429 offline tests passed. Live route, generation, editor input and return accepted; sending and credit are not accepted or enabled.
+
+.17: Owner approved contextual daily publication. .16 run 0d0b739c2be1 posted once and verified 0/1 -> 1/1 after the verification page cleared.
+Eight-task daily plan enabled. Article attempt history avoids repeated comments on the same article; 431 offline tests passed.

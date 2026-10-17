@@ -189,5 +189,16 @@ class CommentTests(unittest.TestCase):
         self.assertFalse(value._owner_resume_ready())
         self.assertTrue(value._owner_resume_ready())
 
+    def test_article_history_is_retained_for_unconfirmed_sends_too(self):
+        CommentJournal().reserve('AI没有心，却让你动了心',COMMENT_TEXT)
+        self.assertEqual(CommentJournal().used_articles(),['AI没有心，却让你动了心'])
+        CommentJournal().credited()
+        self.assertEqual(CommentJournal().used_articles(),['AI没有心，却让你动了心'])
+
+    def test_card_title_matching_ignores_ocr_punctuation_but_does_not_exclude_new_topics(self):
+        titles=['AI没有心，却让你动了心']
+        self.assertTrue(comment_tasks.comment_card_used('来源2026-10-16AI没有心,却让你动了心播报',titles))
+        self.assertFalse(comment_tasks.comment_card_used('雨后为什么能看见彩虹',titles))
+
 
 if __name__=='__main__':unittest.main()

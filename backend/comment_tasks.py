@@ -68,6 +68,16 @@ class CommentJournal:
             db.execute('UPDATE comments SET state=? WHERE day=?',
                        ('credited', datetime.now().date().isoformat()))
 
+    def used_articles(self):
+        with self._connect() as db:
+            return [r['article'] for r in db.execute('SELECT DISTINCT article FROM comments')]
+
+
+def comment_card_used(signature, titles):
+    compact = lambda text: re.sub(r'\W+', '', text)
+    card = compact(signature)
+    return any(len(compact(title)) >= 4 and compact(title) in card for title in titles)
+
 
 def comment_feed(records):
     if verification_visible(records):
@@ -159,6 +169,7 @@ class CommentTasks:
         return self._comment_wait(lambda rs: any(r['text'].strip() == '全部频道' for r in rs))
 
     def _comment_open_article(self):
+        used_titles = CommentJournal().used_articles()
         self._reset_home()
         records = self._comment_channel_menu(self._screen_records())
         self._comment_click(self._comment_label(records, '科普中国', 180, 1100))
@@ -184,6 +195,9 @@ class CommentTasks:
                     continue
                 title = self._article_card_text(box)
                 if len(title) < 6 or any(s in title for s in ('直播', '专题', '订阅', '图集')):
+                    continue
+                if comment_card_used(title, used_titles):
+                    self.send_log('观点：跳过本机已有发表尝试的文章，避免在同一篇下重复留言')
                     continue
                 self._comment_click(dict(box=[int(box[0])+20, int(box[1])+30, min(350, int(box[2])-20), 50]))
                 def loaded(rs):
