@@ -34,6 +34,15 @@ class AIResolver:
         return not self.stop_requested()
 
     def _post(self, data, time_limit=None):
+        started=time.monotonic()
+        try:return self._post_request(data,time_limit=time_limit)
+        finally:
+            hook=getattr(self,'timing_hook',None)
+            if callable(hook):
+                try:hook(time.monotonic()-started)
+                except Exception:pass
+
+    def _post_request(self, data, time_limit=None):
         data = copy.deepcopy(data)
         data.pop("enable_thinking", None)
         data.setdefault("thinking", {"type": "disabled"})

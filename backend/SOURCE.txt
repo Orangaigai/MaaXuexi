@@ -86,3 +86,9 @@ Continue bounded Android boot readiness checks after transient ADB connect/getpr
 Fresh-image native OCR, exact complete-frame reuse, blank-border-only crops; full screenshot for visually indicated questions.
 454 offline regressions, 13 native OCR replay images and one real article route accepted.
 Full-score eight-task run 2455f603017b completed; no new quiz accuracy or new points claimed.
+
+.21: Preserve meaningful symbols/units in strict choice-hint comparison; do not fall through to legacy fuzzy choices.
+Single-input blank context can align the complete question sentence with the hint; ambiguous or independent fields retain existing fallback.
+Bounded local timings and daily key-frame replay; screenshot/OCR/model/owner waiting tracked separately, no device input in replay.
+474 offline tests passed, four archival stages recognized with native OCR and replayed; historical hint paragraph extracted.
+Reading-history expansion is excluded by owner. Direct-control extraction remains a feasibility check, no new agent installed.

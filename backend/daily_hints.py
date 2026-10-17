@@ -26,7 +26,12 @@ def exact_hint_parts(red_texts, options):
 
 
 def clean(text):
-    return re.sub(r'[^\w]', '', text or '')
+    # NFC preserves superscripts, units and operators. Only full-width ASCII
+    # and Chinese sentence punctuation have explicit typographic equivalents.
+    text=unicodedata.normalize('NFC',text or '')
+    text=''.join(chr(ord(char)-0xfee0) if '\uff01'<=char<='\uff5e' else char for char in text)
+    text=text.translate(str.maketrans({'，':',','。':'.','；':';','：':':','“':'"','”':'"','‘':"'",'’':"'"}))
+    return re.sub(r'\s+','',text).rstrip('。.,;')
 
 
 def question_from_records(records, options):

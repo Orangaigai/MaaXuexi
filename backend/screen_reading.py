@@ -1,8 +1,10 @@
 """Full-content OCR boundaries and exact-frame reuse; no question-height guesses."""
 import copy
+import time
 import numpy as np
 from maa.pipeline import JOCR
 from task_support import TaskIncomplete
+from diagnostics import record_time
 
 
 def content_roi(image):
@@ -20,7 +22,9 @@ def content_roi(image):
 
 def read_screen(worker):
     """Capture afresh each call. Cache only byte-identical complete frames."""
+    started=time.monotonic()
     image=worker.tasker.controller.post_screencap().wait().get()
+    record_time(worker,'截图',time.monotonic()-started)
     if not isinstance(image,np.ndarray) or image.ndim!=3 or image.shape[2]!=3 or not image.size:
         worker.connected=False
         raise TaskIncomplete('截图控制器未就绪或模拟器已断开，请重新执行以连接设备')
@@ -30,6 +34,7 @@ def read_screen(worker):
         return copy.deepcopy(previous[1])
     worker._last_screen_ocr_cached=False
     roi=content_roi(image)
+    started=time.monotonic()
     detail=worker.tasker.post_recognition('OCR',JOCR(roi=roi),image).wait().get()
     if detail is None:
         worker._screen_ocr_cache=None
@@ -45,6 +50,7 @@ def read_screen(worker):
         if detail and detail.status.succeeded and detail.nodes:
             records=[dict(text=row.text,box=list(row.box))
                      for row in getattr(detail.nodes[0].recognition,'all_results',[])]
+    record_time(worker,'OCR',time.monotonic()-started)
     worker._screen_ocr_cache=(image.copy(),copy.deepcopy(records)) if records else None
     worker._last_screen_ocr_roi=roi
     return records

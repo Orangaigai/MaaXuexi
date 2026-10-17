@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "local-20261017.20"
+VERSION = "local-20261017.21"
 REPORT_PATH = Path("config/last-run.json")
 # Login is a prerequisite. Then usual no-challenge tasks, occasional-challenge tasks
 # by daily cap (10/2/1), and daily quiz last (frequent challenge on this emulator).

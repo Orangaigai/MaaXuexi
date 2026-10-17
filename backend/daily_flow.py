@@ -135,6 +135,9 @@ def save_stage(worker, scene, records):
     image = getattr(worker.tasker.controller,'cached_image',None)
     if not isinstance(image,np.ndarray):
         return
+    from diagnostics import RunDiagnostics
+    diagnostic=getattr(worker,'diagnostics',None)
+    if isinstance(diagnostic,RunDiagnostics):diagnostic.capture(scene,records,image)
     try:
         folder=Path('logs/daily-finish')/(report.snapshot()['run_id'] if report else time.strftime('%Y%m%d-%H%M%S'))
         folder.mkdir(parents=True,exist_ok=True)

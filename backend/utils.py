@@ -27,6 +27,8 @@ from device_support import online, prepare_emulator
 from fun_challenge import FunChallenge
 from daily_hints import question_from_records, exact_hint_choice, exact_hint_parts
 from screen_reading import read_screen
+from blank_hints import blank_context, hint_paragraph, exact_blank_hint
+from diagnostics import RunDiagnostics, observed, record_time
 from daily_flow import verification_visible, completion_box, daily_scene, finish_daily_quiz, resume_ready, profile_page, final_submission_evidence, acceptance_ready
 from home_navigation import HomeNavigation
 from content_tasks import ContentTasks, is_audio_collection
@@ -384,6 +386,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                     next_probe = time.monotonic() + 1
         finally:
             paused_seconds = time.monotonic() - started
+            record_time(self,'等待本人处理',paused_seconds)
             self._paused_seconds = getattr(self, "_paused_seconds", 0) + paused_seconds
             if getattr(self, "_deadline", None):
                 self._deadline += paused_seconds
@@ -469,6 +472,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         previous = read_report() or {}
         self._previous_run_report = previous
         self.run_report = RunReport(tasks)
+        self.diagnostics = RunDiagnostics(self.run_report,self.send_log)
+        if isinstance(getattr(self,'ai_resolver',None),AIResolver):
+            self.ai_resolver.timing_hook=lambda seconds:record_time(self,'模型请求',seconds)
         self.run_report.update(unattended=unattended)
         if daily_acceptance:
             self.run_report.update(acceptance_test='daily_fresh_round', new_points_claimed=False)
@@ -646,6 +652,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         finally:
             self._deadline = None
             self._run_date = None
+            diagnostic=getattr(self,'diagnostics',None)
+            if isinstance(diagnostic,RunDiagnostics):diagnostic.flush()
             self.run_report.update(resume_automatically=False)
             self._summarize_run()
 
@@ -833,6 +841,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                    for line in result.stdout.splitlines())
 
 
+    @observed('每日答题：等待页面响应')
     def _check_quiz_transition(self, index):
         if index == 4:
             # The fifth question may be scrolled below its heading after submission.
@@ -1312,6 +1321,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             print(f"[识别] 选项: {options}")
         return options
 
+    @observed('每日答题：提取题目与提示')
     def _prepare(self, question_type: str) -> tuple:
         """准备答题数据，返回 (截图列表, 选项OCR结果, 红字列表, 填空格子数)。
         流程：
@@ -1324,6 +1334,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         options = {}
         blank_num = 0
         self._choice_question_text = ''
+        self._blank_context=None
+        self._blank_hint_text=''
         if question_type in ("单选题", "多选题"):
             options = self._get_options()
             self._choice_question_text = question_from_records(self._screen_records(),options)
@@ -1334,6 +1346,10 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 if result.status.succeeded
                 else 0
             )
+            if blank_num:
+                matches=result.nodes[0].recognition.filtered_results
+                boxes=[list(row.box) for row in matches if hasattr(row,'box')]
+                self._blank_context=blank_context(self._screen_records(),boxes) if len(boxes)==blank_num else None
         img_list = [self.tasker.controller.post_screencap().wait().get()]
         hint_found: TaskDetail = self.tasker.post_task("查找提示").wait().get()
         if hint_found.status.failed:
@@ -1358,11 +1374,15 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         red_texts = []
         if self.fast_answer or question_type in ('填空题','点选填空题','单选题','多选题'):
             red_texts = self._get_red_texts()
+        if (question_type=='填空题' and self._blank_context
+                and len(''.join(red_texts))!=blank_num):
+            self._blank_hint_text=hint_paragraph(self._screen_records())
         hint_close = self.tasker.post_task("关闭提示").wait().get()
         if hint_close.status.failed:
             raise TaskIncomplete("Quiz hint was not closed")
         return img_list, options, red_texts, blank_num
 
+    @observed('每日答题：确定答案')
     def _determine_answer(
         self,
         question_type: str,
@@ -1383,9 +1403,14 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             if parts is not None:
                 self.send_log('点选填空：提示原文已完整匹配唯一顺序，无需请求DeepSeek')
                 return parts,True
+        if question_type=='填空题':
+            answer=exact_blank_hint(getattr(self,'_blank_context',None),getattr(self,'_blank_hint_text',''))
+            if answer is not None:
+                self.send_log('填空题：题干前后文与提示唯一对齐，直接填写原文')
+                return answer,True
         fast_answer = self._fast_try_answer(
             question_type, options, red_texts, blank_num
-        ) if self.fast_answer and question_type != '点选填空题' else None
+        ) if self.fast_answer and question_type == '填空题' else None
         if fast_answer is not None:
             return fast_answer, True
         if question_type == "填空题" and red_texts:
@@ -1417,6 +1442,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             raise TaskIncomplete(f'{question_type}未获得可靠答案（{reason}），未提交；已停止此项，不无限等待人工操作')
         return answer, False
 
+    @observed('每日答题：选择或填写答案')
     def _submit_answer(self, question_type: str, answer, from_fast: bool) -> bool:
         """提交答案到界面。
         - 选择题：逐个点击选项字母(选A/选B...)，被遮挡则下滑重试
