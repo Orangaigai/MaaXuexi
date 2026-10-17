@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "purpose": "Evaluation only; never loaded by daily tasks",
+  "small_sample_not_a_model_ranking": true,
+  "cases": [
+    {
+      "id": "archival-transfer-hint",
+      "kind": "daily",
+      "question_type": "单选题",
+      "question": "通过汇款的方式向对方转账，发现被骗后，在确定资金还没有到达对方账上的时候，可以马上电话联系银行工作人员，并报案，这样有可能将钱追回。",
+      "options": {
+        "A": "正确",
+        "B": "错误"
+      },
+      "hint": "如果是通过汇款的方式向对方转账，发现被骗后，在确定资金还没有到达对方账上的时候，可以马上电话联系银行工作人员，并报案，这样有可能将钱追回。",
+      "expected": [
+        "A"
+      ],
+      "deadline_seconds": 6,
+      "images": [
+        {
+          "file": "daily-question.png",
+          "sha256": "479a1b913f9e1c3d61982f1afc1a5508a41f4d7cb116ac7ae541a5d3ac47c3a8"
+        },
+        {
+          "file": "daily-hint.png",
+          "sha256": "10a8d339d569948ee9b21eb5c08cf145abd7dd9d42ed9adf4d2193c26f7a74c6"
+        }
+      ],
+      "evidence": {
+        "kind": "app_hint",
+        "description": "真实应用提示原文明确支持整个题干；原始 observed.json 与提示截图。",
+        "images": [
+          {
+            "file": "daily-hint.png",
+            "sha256": "10a8d339d569948ee9b21eb5c08cf145abd7dd9d42ed9adf4d2193c26f7a74c6"
+          }
+        ]
+      }
+    },
+    {
+      "id": "archival-dehua-feedback",
+      "kind": "timed",
+      "question_type": "单选题",
+      "question": "德化窑是始烧于____的民间瓷窑，位于福建德化县，以低铝高硅的“象牙白”为其代表作品而闻名于世。",
+      "options": {
+        "A": "元代",
+        "B": "宋代",
+        "C": "唐代",
+        "D": "明代"
+      },
+      "expected": [
+        "B"
+      ],
+      "deadline_seconds": 4,
+      "images": [
+        {
+          "file": "race-question.png",
+          "sha256": "eee7f6da4a5c71050ed5698e41f381873cbcd47f2bb559855900ce615d023615"
+        }
+      ],
+      "evidence": {
+        "kind": "platform_feedback",
+        "description": "question-06.png 同题 B 宋代为绿色正确项，D 明代为红色错项。反馈图不发送模型。",
+        "images": [
+          {
+            "file": "race-feedback.png",
+            "sha256": "bbda82b68dbd32fc9d29e8aa712f3e3eca5f9a1db363eaab4bedb6543f5fd51f"
+          }
+        ]
+      }
+    }
+  ]
+}

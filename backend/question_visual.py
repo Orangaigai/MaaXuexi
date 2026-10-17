@@ -24,7 +24,7 @@ def question_area(image, records, options):
     return [55,top,min(665,image.shape[1]-20),bottom]
 
 
-def visual_evidence(image,records,options,question=''):
+def visual_evidence(image,records,options,question='',strict=False):
     """Residual photo/diagram ink after masking OCR lines forces full-image input.
 
     This is a conservative routing heuristic, not a promise to classify every image.
@@ -49,8 +49,9 @@ def visual_evidence(image,records,options,question=''):
         top,bottom=max(0,y-y1-6),min(y2-y1,y+h-y1+6)
         if right>left and bottom>top:residual[top:bottom,left:right]=False
     ys,xs=np.nonzero(residual)
-    visible=(len(xs)>=120 and len(np.unique(ys))>=12 and len(np.unique(xs))>=12
-             and int(xs.max()-xs.min())>=24 and int(ys.max()-ys.min())>=16) if len(xs) else False
+    count,width,height=(40,8,8) if strict else (120,24,16)
+    visible=(len(xs)>=count and len(np.unique(ys))>=min(12,height) and len(np.unique(xs))>=min(12,width)
+             and int(xs.max()-xs.min())>=width and int(ys.max()-ys.min())>=height) if len(xs) else False
     return bool(visible or text_needs_image(question)),area
 
 

@@ -26,6 +26,7 @@ from pathlib import Path
 from device_support import online, prepare_emulator
 from fun_challenge import FunChallenge
 from daily_hints import question_from_records, exact_hint_choice, exact_hint_parts
+from daily_text import choice_page, complete_hint, request_text
 from screen_reading import read_screen
 from blank_hints import blank_context, hint_paragraph, exact_blank_hint
 from diagnostics import RunDiagnostics, observed, record_time
@@ -1334,11 +1335,20 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         options = {}
         blank_num = 0
         self._choice_question_text = ''
+        self._daily_choice_page = None
+        self._daily_choice_text = None
         self._blank_context=None
         self._blank_hint_text=''
         if question_type in ("单选题", "多选题"):
             options = self._get_options()
-            self._choice_question_text = question_from_records(self._screen_records(),options)
+            records = self._screen_records()
+            self._choice_question_text = question_from_records(records,options)
+            frame = getattr(self,'_screen_ocr_cache',None)
+            if isinstance(frame,tuple) and len(frame)==2:
+                self._daily_choice_page = choice_page(records,frame[0],options,question_type)
+                if self._daily_choice_page:
+                    options={letter:(text,options[letter][1])
+                             for letter,text in self._daily_choice_page['options'].items()}
         if question_type == "填空题":
             result: TaskDetail = self.tasker.post_task("文本框").wait().get()
             blank_num = (
@@ -1353,6 +1363,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         img_list = [self.tasker.controller.post_screencap().wait().get()]
         hint_found: TaskDetail = self.tasker.post_task("查找提示").wait().get()
         if hint_found.status.failed:
+            self._daily_choice_page = None
             self.tasker.controller.post_swipe(
                 randint(350, 360),
                 randint(990, 1000),
@@ -1377,6 +1388,15 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         if (question_type=='填空题' and self._blank_context
                 and len(''.join(red_texts))!=blank_num):
             self._blank_hint_text=hint_paragraph(self._screen_records())
+        if (self._daily_choice_page and
+                exact_hint_choice(question_type,options,red_texts,self._choice_question_text) is None):
+            hint_records=self._screen_records()
+            frame=getattr(self,'_screen_ocr_cache',None)
+            if isinstance(frame,tuple) and len(frame)==2:
+                hint=complete_hint(hint_records,frame[0])
+                self._daily_choice_text=request_text(self._daily_choice_page,hint)
+                # Preserve the same full hint frame if text completeness fails.
+                img_list[-1]=frame[0].copy()
         hint_close = self.tasker.post_task("关闭提示").wait().get()
         if hint_close.status.failed:
             raise TaskIncomplete("Quiz hint was not closed")
@@ -1426,7 +1446,13 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 report.update(phase='每日答题：正在请求DeepSeek答案')
             if DEBUG_MODE:
                 print("[AI] 请求选择题解答")
-            answer = self.ai_resolver.resolve_choice(img_list, question_type)
+            text_input=getattr(self,'_daily_choice_text',None)
+            if text_input:
+                self.send_log('每日答题：题干、全部选项和提示已完整读取，只传文字给模型')
+                answer = self.ai_resolver.resolve_choice(img_list,question_type,text_input=text_input)
+            else:
+                self.send_log('每日答题：保留完整题面与提示图片')
+                answer = self.ai_resolver.resolve_choice(img_list, question_type)
         elif question_type == "填空题":
             if DEBUG_MODE:
                 print("[AI] 请求填空题解答")
