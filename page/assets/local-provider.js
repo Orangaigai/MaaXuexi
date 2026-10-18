@@ -8,7 +8,8 @@
     credited:'首局积分已领取',unavailable:'暂不可用',unverified:'积分待核实',incomplete:'尚未满分',failed:'未完成',
     stopped:'已中止',needs_human:'需本人处理',deferred:'待继续'};
   const inputs=new Map();
-  let commentEnabled=false,loaded=false,busy=false,health=null,provider=null,deviceList=[];
+  let commentEnabled=false,loaded=false,busy=false,health=null,provider=null,deviceList=[],savedTasks=null;
+  let refreshing=null,refreshController=null,refreshRevision=0;
   for(const name of names){
     const label=document.createElement('label'),input=document.createElement('input');
     label.className='task-option';input.type='checkbox';input.disabled=true;
@@ -18,15 +19,23 @@
       const badge=document.createElement('span');badge.className='verification-tag';badge.textContent='可能需验证';copy.append(badge);
     }
     label.append(input,copy);$('choices').append(label);inputs.set(name,input);
+    input.addEventListener('change',renderSavedState);
   }
-  async function request(path,body){
+  async function request(path,body,signal){
     const response=await fetch(path,{cache:'no-store',...(body===undefined?{}:{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}),
+      ...(signal?{signal}:body===undefined?{signal:AbortSignal.timeout(path.endsWith('/diagnostics')?25000:10000)}:{})});
     const result=await response.json();
     if(!response.ok||result.status==='failed')throw Error(typeof result.detail==='string'?result.detail:result.message||'请求未成功，请稍后重试。');
     return result;
   }
   const plan=()=>({tasklist:[...inputs].filter(([,input])=>input.checked).map(([name])=>name),fast_answer:false,debug:false});
+  const selectionKey=tasks=>[...tasks].sort().join('|');
+  function renderSavedState(){
+    const changed=savedTasks!==null&&selectionKey(plan().tasklist)!==selectionKey(savedTasks);
+    $('taskEditState').textContent=!loaded?'读取中':changed?'有修改，尚未保存':'已保存';
+    $('taskEditState').classList.toggle('unsaved',changed);
+  }
   function controls(){
     const running=Boolean(health?.task_running),paused=Boolean(health?.paused),requested=Boolean(health?.pause_requested);
     for(const[name,input]of inputs)input.disabled=!loaded||busy||running||(name==='发表观点'&&!commentEnabled);
@@ -37,13 +46,14 @@
     $('pause').textContent=requested?'正在暂停…':'暂停';
     $('resume').hidden=!health?.can_continue;$('resume').disabled=busy||!health;
     $('stop').hidden=!running;$('stop').disabled=busy;
+    $('diagnose').disabled=diagnosing||running||!health;
     $('connect').hidden=true;
-    window.dispatchEvent(new CustomEvent('maa:status',{detail:health}));
+    renderSavedState();window.dispatchEvent(new CustomEvent('maa:status',{detail:health}));
   }
   async function act(path,body,message){
     busy=true;controls();
     const target=['/api/pause','/api/continue','/api/stop'].includes(path)?$('runMessage'):$('actionMessage');
-    try{const result=await request(path,body);target.textContent=result.message||message;await refresh();return result;}
+    try{const result=await request(path,body);target.textContent=result.message||message;await refresh(true);return result;}
     catch(error){target.textContent=error.message;return null;}
     finally{busy=false;controls();}
   }
@@ -57,7 +67,11 @@
   };
   async function savePlan(body){
     const result=await act('/api/local/task-plan',body,'任务清单已保存。');
-    if(result)for(const[name,input]of inputs)input.checked=result.tasklist.includes(name);
+    if(result){
+      savedTasks=[...result.tasklist];
+      for(const[name,input]of inputs)input.checked=result.tasklist.includes(name);
+      renderSavedState();
+    }
   }
   $('save').onclick=()=>{
     const body=plan();
@@ -88,11 +102,14 @@
     return /read_timeout/.test(reason)?'连接超时，请稍后再试':'答题服务暂不可用';
   }
   function renderProvider(){
-    const issue=providerFailure(health?.run_summary);
-    $('provider').textContent=issue||(provider?.validated?'已连接':provider?.configured?'待验证':provider?'待配置':'读取中');
-    $('provider').classList.toggle('ready',Boolean(provider?.validated&&!issue));
-    $('provider').classList.toggle('attention',Boolean(issue||provider&&!provider.validated));
-    $('providerHint').textContent=provider?.configured?'用于自动答题；开启观点时也会生成短评。':'自动答题需要先配置 DeepSeek API 密钥，也可先使用基础任务。';
+    const run=health?.run_summary,checked=Date.parse(provider?.validation?.checked_at||''),
+      occurred=Date.parse(run?.finished_at||run?.started_at||'');
+    const issue=Number.isFinite(occurred)&&Number.isFinite(checked)&&occurred>checked?providerFailure(run):null;
+    $('provider').textContent=provider?.validated?'已验证':provider?.configured?'待验证':provider?'待配置':'读取中';
+    $('provider').classList.toggle('ready',Boolean(provider?.validated));
+    $('provider').classList.toggle('attention',Boolean(provider&&!provider.validated));
+    $('providerHint').textContent=issue?'最近任务：'+issue+'。详情见运行结果。':provider?.configured?
+      '用于自动答题；开启观点时也会生成短评。':'自动答题需要先配置 DeepSeek API 密钥，也可先使用基础任务。';
     $('providerSetup').textContent=provider?.configured?'管理密钥':'配置密钥';
     $('providerSetup').classList.toggle('primary',provider?.configured===false);
   }
@@ -105,6 +122,9 @@
       ?reason.replace(/；正常页面恢复后(?:会自动收尾|自动继续本轮)/g,''):reason;
   }
   function renderResults(run){
+    const date=new Date(run?.started_at||'');
+    $('resultTime').textContent=Number.isFinite(date.getTime())?'运行于 '+new Intl.DateTimeFormat('zh-CN',{
+      timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(date):'';
     $('results').replaceChildren();
     for(const[name,row]of Object.entries(run?.tasks||{})){
       if(!names.includes(name))continue;
@@ -119,9 +139,16 @@
       const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='开始执行后，这里显示任务结果。';tr.append(td);$('results').append(tr);
     }
   }
-  async function refresh(){
+  function refresh(force=false){
+    if(refreshing&&!force)return refreshing;
+    const ticket=++refreshRevision;
+    refreshController?.abort();const controller=refreshController=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),10000);
+    refreshing=(async()=>{
     try{
-      health=await request('/api/status');$('connection').textContent=health.connected?'模拟器已连接':'执行时自动连接';
+      const response=await request('/api/status',undefined,controller.signal);
+      if(ticket!==refreshRevision)return;
+      health=response;$('connection').textContent=health.connected?'模拟器已连接':'执行时自动连接';
       $('version').textContent=health.local_version;
       const run=health.run_summary;let text='选择任务后即可开始。';
       if(health.task_running){
@@ -133,8 +160,10 @@
       else if(health.last_error)text='任务未完成，请查看下方结果。';
       $('status').textContent=text;renderProvider();renderResults(run);
       document.title=(health.task_running?(health.paused?'[已暂停] ':'[运行中] '):health.can_continue?'[待继续] ':'')+'MaaXuexi · 任务控制台';
-    }catch{health=null;$('status').textContent='后台未连接，请重新启动 MaaXuexi。';}
+    }catch{if(ticket!==refreshRevision)return;health=null;$('status').textContent='后台暂未连接，正在等待恢复…';}
     controls();
+    })().finally(()=>{clearTimeout(timer);if(ticket===refreshRevision)refreshing=null;});
+    return refreshing;
   }
   async function initialize(){
     await refresh();
@@ -144,17 +173,50 @@
     inputs.get('发表观点').title=commentEnabled?'':'发表观点尚未授权或设置暂不可用。';
     try{
       const saved=await request('/api/local/task-plan');
+      savedTasks=[...saved.tasklist];
       for(const[name,input]of inputs)input.checked=saved.tasklist.includes(name);loaded=true;
     }catch(error){$('actionMessage').textContent=error.message;}
     controls();await refreshProvider();
   }
-  let lines=[];
+  let lines=[],logSession='',logCursor=-1,logPaint=false;
+  function paintLogs(){
+    if(logPaint||document.hidden||!$('logPanel').open)return;
+    logPaint=true;requestAnimationFrame(()=>{logPaint=false;$('logs').textContent=lines.join('\n');$('logs').scrollTop=$('logs').scrollHeight;});
+  }
   function openLog(){
-    const socket=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/ws');
-    socket.onmessage=event=>{lines.push(String(event.data));lines=lines.slice(-600);$('logs').textContent=lines.join('\n');$('logs').scrollTop=$('logs').scrollHeight;};
+    const query=new URLSearchParams({v:'2',session:logSession,after:String(logCursor)});
+    const socket=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/ws?'+query);
+    socket.onmessage=event=>{
+      let value;try{value=JSON.parse(event.data);}catch{value=null;}
+      if(value?.session){
+        if(value.session!==logSession){logSession=value.session;logCursor=-1;}
+        if(value.kind==='hello')return;
+        if(!Number.isSafeInteger(value.sequence)||value.sequence<=logCursor)return;
+        logCursor=value.sequence;
+      }
+      lines.push(value?.session?String(value.message):String(event.data));lines=lines.slice(-600);paintLogs();
+    };
     socket.onclose=()=>setTimeout(openLog,4000);socket.onerror=()=>socket.close();
   }
   $('clearLog').onclick=()=>{lines=[];$('logs').textContent='';};
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh();refreshProvider();}});
-  initialize();setInterval(refresh,3000);openLog();
+  let diagnosing=false;
+  $('diagnose').onclick=async()=>{
+    if(diagnosing||health?.task_running)return;
+    diagnosing=true;$('diagnose').disabled=true;$('diagnosticsMessage').textContent='正在检查…';
+    try{
+      const result=await request('/api/local/diagnostics');$('diagnosticsResults').replaceChildren();
+      const labels={ok:'正常',warn:'提示',error:'需处理'};
+      for(const row of result.checks){
+        const item=document.createElement('li'),name=document.createElement('span'),message=document.createElement('span');
+        name.textContent=row.name;message.textContent=`${labels[row.state]} · ${row.message}`;
+        message.className=row.state;item.append(name,message);$('diagnosticsResults').append(item);
+      }
+      $('diagnosticsMessage').textContent=result.summary.error?`检查完成，${result.summary.error}项需要处理。`:'检查完成。';
+    }catch(error){$('diagnosticsMessage').textContent=error.message;}
+    finally{diagnosing=false;$('diagnose').disabled=Boolean(health?.task_running);}
+  };
+  $('logPanel').addEventListener('toggle',paintLogs);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh(true);refreshProvider();paintLogs();}});
+  async function poll(){await refresh();setTimeout(poll,document.hidden?15000:3000);}
+  initialize().finally(()=>setTimeout(poll,3000));openLog();
 })();

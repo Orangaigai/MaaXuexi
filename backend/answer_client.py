@@ -10,11 +10,12 @@ import httpx
 import numpy as np
 from PIL import Image
 from question_visual import text_needs_image
+from timed_http import AnswerSession, RequestCancelled
 
 
 class AIResolver:
     def __init__(self, api_key, model, stop_requested=None):
-        self.session = httpx.Client(
+        self.session = AnswerSession(
             timeout=httpx.Timeout(connect=10, read=45, write=15, pool=5),
             headers={"Authorization": f"Bearer {api_key}"},
         )
@@ -65,7 +66,13 @@ class AIResolver:
             try:
                 self.last_request_attempts = attempt + 1
                 kwargs = {'timeout':httpx.Timeout(connect=5,read=time_limit,write=5,pool=5)} if time_limit else {}
-                response = self.session.post(self.url, json=data, **kwargs)
+                bounded=getattr(self.session,'post_bounded',None)
+                response=(bounded(self.url,json=data,total_timeout=time_limit,
+                                  stop_requested=self.stop_requested,**kwargs)
+                          if time_limit and callable(bounded) else self.session.post(self.url,json=data,**kwargs))
+            except RequestCancelled:
+                self.last_error = "cancelled"
+                return None
             except (httpx.ConnectError, httpx.ConnectTimeout):
                 self.last_error = "connection_failed"
                 if time_limit is None and attempt == 0 and self._wait(1):
@@ -88,6 +95,10 @@ class AIResolver:
                 self.last_error = f"http_{response.status_code}"
             return response
         return None
+
+    def cancel_pending(self):
+        cancel=getattr(self.session,'cancel_pending',None)
+        if callable(cancel):cancel()
 
     @staticmethod
     def image_encode(img):

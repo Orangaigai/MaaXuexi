@@ -5,6 +5,8 @@ import os
 import subprocess
 import threading
 import traceback
+import time
+import uuid
 from collections import deque
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -59,6 +61,7 @@ class AppState:
         self.worker = None
         self.history_message = deque(maxlen=600)
         self.message_sequence = 0
+        self.log_session = uuid.uuid4().hex
         self.lock = threading.RLock()
         self.current_tasks = []
 
@@ -90,6 +93,7 @@ def configure_key(key):
         old_session.close()
 
 async def collect_messages():
+    next_cleanup=0
     while True:
         for _ in range(500):
             if app_state.message_conn.empty():
@@ -97,6 +101,12 @@ async def collect_messages():
             message = app_state.message_conn.get_nowait()
             app_state.history_message.append((app_state.message_sequence, message))
             app_state.message_sequence += 1
+        if time.monotonic()>=next_cleanup:
+            from log_retention import prune_logs
+            next_cleanup=time.monotonic()+3600
+            report=current_report()
+            try:await asyncio.to_thread(prune_logs,keep_trace=report.get('run_id'))
+            except OSError:pass
         await asyncio.sleep(0.05)
 
 @asynccontextmanager
@@ -149,6 +159,13 @@ def post_settings(config: ConfigModel):
 @app.get('/api/local/provider')
 def get_provider():
     return provider_metadata()
+
+@app.get('/api/local/diagnostics')
+def local_diagnostics():
+    if task_running():raise HTTPException(409,'请在任务结束后检查运行环境。')
+    from runtime_doctor import diagnose
+    return diagnose(Path.cwd(),health=status(),provider=provider_metadata(),schedule=read_schedule(),
+                    adb_command=getattr(app_state.worker,'_adb_command',None))
 
 @app.get('/api/local/task-plan')
 def get_task_plan():
@@ -371,12 +388,20 @@ def status():
 @app.websocket('/api/ws')
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
+    structured=websocket.query_params.get('v')=='2'
     cursor = -1
+    if structured:
+        if websocket.query_params.get('session')==app_state.log_session:
+            try:cursor=max(-1,int(websocket.query_params.get('after','-1')))
+            except ValueError:pass
+        await websocket.send_json(dict(kind='hello',session=app_state.log_session))
     try:
         while True:
             for sequence, message in list(app_state.history_message):
                 if sequence > cursor:
-                    await websocket.send_text(message)
+                    if structured:
+                        await websocket.send_json(dict(session=app_state.log_session,sequence=sequence,message=message))
+                    else:await websocket.send_text(message)
                     cursor = sequence
             await asyncio.sleep(0.1)
     except (WebSocketDisconnect, RuntimeError):

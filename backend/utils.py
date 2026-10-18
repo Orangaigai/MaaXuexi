@@ -317,13 +317,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
     def send_log(self, msg):
         line = f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())} {msg}"
         self.queue.put(line)
-        try:
-            Path("logs").mkdir(exist_ok=True)
-            with Path(time.strftime("logs/events-%Y%m%d.log")).open("a", encoding="utf-8") as stream:
-                stream.write(line + "\n")
-        except OSError:
-            pass
-        time.sleep(0.05)
+        from runtime_logs import write_event
+        write_event(line)
 
     def connection_alive(self):
         return bool(self.connected and online(getattr(self, "_adb_command", None)))
@@ -676,7 +671,10 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             self._deadline = None
             self._run_date = None
             diagnostic=getattr(self,'diagnostics',None)
-            if isinstance(diagnostic,RunDiagnostics):diagnostic.flush()
+            if isinstance(diagnostic,RunDiagnostics):
+                if self.run_report.snapshot().get('status') in ('failed','partial','needs_human'):
+                    diagnostic.capture_last_observed(self)
+                diagnostic.flush()
             self.run_report.update(resume_automatically=False)
             self._summarize_run()
 
@@ -1035,8 +1033,12 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             self._check_active()
             if not prepared:
                 raise TaskIncomplete("Answer was not prepared or selected")
-            self._sleep(1)
-            submitted = self.tasker.post_task("确定").wait().get()
+            # Existing input handlers confirm selection/filling; wait on the button only.
+            submitted = self.tasker.post_task("确定", {"确定": {
+                "timeout":1500,"pre_wait_freezes":{
+                    "time":150,"target":[552,44,131,61],"threshold":.98,
+                    "rate_limit":50,"timeout":1000}
+            }}).wait().get()
             if submitted.status.failed:
                 raise TaskIncomplete("Answer submission button was not recognized")
             if i==4:

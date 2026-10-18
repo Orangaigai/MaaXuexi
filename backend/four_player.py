@@ -477,6 +477,13 @@ class FourPlayerQuiz:
                     return
                 current = race_snapshot(records,self.tasker.controller.cached_image,mode)
                 if pending is not None:
+                    if (not pending['future'].done() and current is not None
+                            and (current['key'] != pending['key']
+                                 or current.get('visual_key') != pending.get('visual_key'))
+                            and not pending.get('cancel_requested')):
+                        pending['cancel_requested']=True
+                        cancel=getattr(self.ai_resolver,'cancel_pending',None)
+                        if callable(cancel):cancel()
                     if pending['future'].done():
                         answer = pending['future'].result()
                         elapsed = time.monotonic()-pending['started']
@@ -530,4 +537,6 @@ class FourPlayerQuiz:
             self._race_save('98-round-timeout',records)
             raise TaskIncomplete('对战：240秒未确认结算，停止本轮，不再匹配')
         finally:
+            cancel=getattr(self.ai_resolver,'cancel_pending',None)
+            if callable(cancel):cancel()
             executor.shutdown(wait=False,cancel_futures=True)

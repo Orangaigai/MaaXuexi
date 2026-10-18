@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/'backend'))
-from quiz_benchmark import load_cases,evaluate,summarize
+from quiz_benchmark import load_cases,evaluate,summarize,rotate_options
 from answer_client import AIResolver
 from provider_support import MODEL
 
@@ -30,12 +30,16 @@ def main():
     parser.add_argument('--repeats',type=int,default=1)
     parser.add_argument('--max-calls',type=int,default=16)
     parser.add_argument('--run',action='store_true',help='Enable paid model requests; otherwise only validate cases and print the plan')
+    parser.add_argument('--rotate-options',action='store_true',help='Text-only cyclic option-order stability test')
     parser.add_argument('--output',type=Path,default=ROOT/'logs/model-comparison/latest.json')
     parser.add_argument('--input-price',type=float,help='Optional currency units per million uncached input tokens')
     parser.add_argument('--cached-input-price',type=float)
     parser.add_argument('--output-price',type=float)
     args=parser.parse_args()
     cases=load_cases(args.cases)
+    if args.rotate_options:
+        if args.routes!=['text']:parser.error('Option rotation is text-only; use --routes text')
+        cases=rotate_options(cases)
     total=len(cases)*len(args.models)*len(args.routes)*args.repeats
     if (not 1<=args.repeats<=5 or not 1<=args.max_calls<=64 or total>args.max_calls
             or len(set(args.models))!=len(args.models) or len(set(args.routes))!=len(args.routes)
@@ -46,7 +50,8 @@ def main():
         parser.error('Supply all three non-negative token prices, or omit all')
     prices=dict(zip(('input','cached_input','output'),rates)) if all(v is not None for v in rates) else None
     plan=dict(cases=len(cases),models=args.models,routes=args.routes,repeats=args.repeats,
-              maximum_calls=total,paid_requests=args.run,no_android=True,no_task_execution=True)
+              maximum_calls=total,paid_requests=args.run,no_android=True,no_task_execution=True,
+              option_rotation=args.rotate_options)
     print(json.dumps(plan,ensure_ascii=False),flush=True)
     if not args.run:return 0
     from key_store import load_key

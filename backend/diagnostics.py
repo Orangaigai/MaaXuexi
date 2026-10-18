@@ -12,7 +12,7 @@ class RunDiagnostics:
     def __init__(self, report, log, root=Path('logs/trace')):
         self.report=report;self.log=log;self.lock=threading.RLock()
         self.folder=Path(root)/report.snapshot()['run_id']
-        self.started=time.monotonic();self.timings={};self.frames=[]
+        self.started=time.monotonic();self.timings={};self.frames=[];self.serial=0
 
     def record(self, label, seconds):
         with self.lock:
@@ -41,22 +41,39 @@ class RunDiagnostics:
             if self.report.snapshot().get('phase')==label:self.report.update(phase=previous)
 
     def capture(self, scene, records, image):
-        if len(self.frames)>=24 or image is None:return
+        if image is None:return
         try:
             from PIL import Image
             self.folder.mkdir(parents=True,exist_ok=True)
-            name=f'{len(self.frames)+1:02d}-{scene}.png'
+            self.serial+=1
+            name=f'{self.serial:04d}-{scene}.png'
             path=self.folder/name
             Image.fromarray(image[:,:,::-1]).save(path)
             frame=dict(scene=scene,file=name,sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
                        seconds=round(time.monotonic()-self.started,3),records=records)
             self.frames.append(frame)
+            # Preserve entry context and the latest observations, including late failures.
+            removed=self.frames.pop(2) if len(self.frames)>24 else None
             index=self.folder/'index.json';temporary=index.with_suffix('.tmp')
             temporary.write_text(json.dumps(dict(version=1,frames=self.frames),ensure_ascii=False,indent=2),encoding='utf-8')
             temporary.replace(index);self.flush()
+            if removed:
+                old=(self.folder/removed['file']).resolve()
+                if old.is_relative_to(self.folder.resolve()):old.unlink(missing_ok=True)
         except (OSError,ValueError,TypeError):
             # Diagnostic files cannot change execution or trigger retries.
             return
+
+    def capture_last_observed(self,worker):
+        """Keep a cached observation on failure, without a new capture or input."""
+        try:
+            import numpy as np
+            image=worker.tasker.controller.cached_image
+            if not isinstance(image,np.ndarray):return
+            previous=getattr(worker,'_screen_ocr_cache',None)
+            records=previous[1] if previous and np.array_equal(previous[0],image) else []
+            self.capture('failure-last-observed',records,image)
+        except (AttributeError,TypeError,ValueError):pass
 
 
 def record_time(worker,label,seconds):

@@ -4,9 +4,28 @@ import json
 import math
 import statistics
 import time
+import copy
+import re
 from pathlib import Path
 import numpy as np
 from PIL import Image
+
+
+def rotate_options(cases):
+    """Cyclic text-only evaluation, preserving answer content and source evidence."""
+    result=[]
+    for source in cases:
+        texts=list(source['options'].values())
+        if any(re.search(r'以上|上述|前[一二三四五六]项|选项\s*[A-F]|[A-F]\s*(?:和|与|及|、|/)',s) for s in texts):
+            raise ValueError('Option references cannot be permuted independently')
+        old=list(source['options']);correct={source['options'][key] for key in source['expected']}
+        if len(set(texts))!=len(texts):raise ValueError('Duplicate option text')
+        for shift in range(len(texts)):
+            case=copy.deepcopy(source);ordered=texts[shift:]+texts[:shift]
+            case.update(id=f"{source['id']}/rotate-{shift}",source_case_id=source['id'],rotation=shift,
+                        options=dict(zip(old,ordered)),expected=[key for key,text in zip(old,ordered) if text in correct])
+            result.append(case)
+    return result
 
 
 def load_cases(path):
