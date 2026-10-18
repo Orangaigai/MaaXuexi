@@ -93,10 +93,9 @@ class CommentJournal:
                     raise TaskIncomplete('未找到唯一的本轮发表记录，未修改历史记录')
                 attempt_id = rows[0]['attempt_id']
             db.execute('UPDATE comment_attempts SET state=? WHERE attempt_id=?', ('credited',attempt_id))
-            db.execute('UPDATE comments SET state=? WHERE day=? AND article='
-                       '(SELECT article FROM comment_attempts WHERE attempt_id=?) AND text='
-                       '(SELECT text FROM comment_attempts WHERE attempt_id=?)',
-                       ('credited',datetime.now().date().isoformat(),attempt_id,attempt_id))
+            db.execute('UPDATE comments SET state=? WHERE day=? AND ?='
+                       '(SELECT attempt_id FROM comment_attempts WHERE day=? ORDER BY rowid LIMIT 1)',
+                       ('credited',datetime.now().date().isoformat(),attempt_id,datetime.now().date().isoformat()))
 
     def used_articles(self):
         with self._connect() as db:
@@ -321,8 +320,13 @@ class CommentTasks:
         entry = self._comment_ocr('观点返回文章核对', [20, 1200, 455, 75])
         if not any('发表观点' in r['text'] for r in entry):
             raise TaskIncomplete('观点提交后未回到普通文章页，保留现场，不重复发表')
-        self.tasker.post_task('返回').wait()
-        records = self._comment_wait(self._comment_life_feed)
+        # Android Back can merely clear the WebView/editor focus after posting.
+        # The recognized article has its own visible top-left navigation button.
+        self._comment_click(dict(text='文章返回', box=[12, 44, 58, 60]))
+        records = self._comment_wait(lambda rows: self._comment_life_feed(rows) or home_ready(rows))
+        if home_ready(records):
+            self._wait_home_ready(timeout=20)
+            return
         records = self._comment_channel_menu(records)
         self._comment_click(self._comment_label(records, '推荐', 180, 1100))
         self._wait_home_ready(timeout=20)

@@ -55,8 +55,47 @@ class AttendedJournalTests(unittest.TestCase):
         with closing(sqlite3.connect(self.path,isolation_level=None)) as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM comment_attempts').fetchone()[0],1)
 
+    def test_same_text_retry_credit_does_not_relabel_original_failed_attempt(self):
+        journal=CommentJournal(self.path);journal.reserve('同一文章',COMMENT_TEXT,attempt_id='first')
+        journal=CommentJournal(self.path);journal.reserve('同一文章',COMMENT_TEXT,owner_retry=True,attempt_id='second')
+        journal.credited()
+        with closing(sqlite3.connect(self.path,isolation_level=None)) as db:
+            self.assertEqual(db.execute('SELECT state FROM comments').fetchone()[0],'attempted')
+            self.assertEqual(db.execute('SELECT state FROM comment_attempts WHERE attempt_id=?',('first',)).fetchone()[0],'attempted')
+
 
 class AttendedDispatchTests(unittest.TestCase):
+    def test_return_uses_article_arrow_once_then_confirmed_channel(self):
+        value=existing.worker();value._guard_verification=Mock()
+        value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[30,1220,200,30])])
+        value._comment_click=Mock();value._comment_life_feed=Mock(return_value=True)
+        records=[dict(text='生活百科',box=[20,180,100,30])]
+        value._comment_wait=Mock(side_effect=lambda predicate: records if predicate(records) else self.fail('Return target was not recognized'))
+        value._comment_channel_menu=Mock(return_value=records)
+        value._comment_label=Mock(return_value=dict(text='推荐',box=[10,200,100,30]))
+        value._wait_home_ready=Mock()
+        value._comment_restore_home()
+        self.assertEqual(value._comment_click.call_args_list[0].args[0]['text'],'文章返回')
+        self.assertEqual(value._comment_click.call_count,2)
+        value.tasker.post_task.assert_not_called()
+        value._wait_home_ready.assert_called_once()
+
+    def test_return_already_at_home_does_not_open_channel_menu(self):
+        value=existing.worker();value._guard_verification=Mock()
+        value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[30,1220,200,30])])
+        value._comment_click=Mock();value._comment_life_feed=Mock(return_value=False)
+        value._comment_wait=Mock(side_effect=lambda predicate: [] if predicate([]) else self.fail('Home was not accepted'))
+        value._comment_channel_menu=Mock();value._wait_home_ready=Mock()
+        with patch.object(comment_tasks,'home_ready',return_value=True):value._comment_restore_home()
+        value._comment_click.assert_called_once()
+        value._comment_channel_menu.assert_not_called()
+
+    def test_real_verification_prevents_article_return_click(self):
+        value=existing.worker();value._comment_click=Mock()
+        value._guard_verification=Mock(side_effect=TaskIncomplete('本人验证尚未完成'))
+        with self.assertRaises(TaskIncomplete):value._comment_restore_home()
+        value._comment_click.assert_not_called()
+
     def test_normal_worker_run_can_retry_but_scheduled_run_cannot(self):
         case=existing.CommentTests();case.setUp()
         try:

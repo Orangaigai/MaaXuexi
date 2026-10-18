@@ -72,14 +72,15 @@ class ScrolledCommentFeedTests(unittest.TestCase):
         value=self.value();value._comment_life_selected=True
         value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[25,1220,150,30])])
         def wait(predicate,*args,**kwargs):
-            if predicate==value._comment_life_feed:
-                self.assertTrue(predicate(COLLAPSED))
+            self.assertTrue(predicate(COLLAPSED))
             return COLLAPSED
         value._comment_wait=Mock(side_effect=wait)
         value._comment_channel_menu=Mock(return_value=[dict(text='推荐',box=[20,300,80,35])])
         value._comment_click=Mock();value._wait_home_ready=Mock()
         value._comment_restore_home()
         value._comment_channel_menu.assert_called_once_with(COLLAPSED)
-        value._comment_click.assert_called_once()
+        self.assertEqual(value._comment_click.call_count,2)
+        self.assertEqual(value._comment_click.call_args_list[0].args[0]['text'],'文章返回')
+        self.assertEqual(value._comment_click.call_args_list[1].args[0]['text'],'推荐')
 
 if __name__=='__main__':unittest.main()
