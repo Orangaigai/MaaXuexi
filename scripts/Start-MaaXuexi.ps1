@@ -94,7 +94,7 @@ function Connect-DeviceWhenIdle($Device) {
         throw
     }
     if ($connection.status -ne 'success') { throw 'MaaXuexi could not connect to MuMu.' }
-    Write-Host 'MuMu connected. The current app screen is preserved until a task starts.'
+    Write-Host 'MuMu connected. A recognized Android desktop opens Xuexi; existing app pages are preserved. Tasks start only on Execute or the schedule.'
 }
 
 function Invoke-AdbProbe([string]$AdbPath, [string]$Address, [ValidateSet('Connect','State','Boot')][string]$Mode) {

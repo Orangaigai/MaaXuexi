@@ -338,7 +338,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         if device is None:
             devices = Toolkit.find_adb_devices(specified_adb=adb)
             device = next((item for item in devices if item.address == address), None)
-        if device is None or not self.connect_device(device):
+        if device is None or not self.connect_device(device, open_from_launcher=False):
             raise TaskIncomplete("自动操作控制器连接失败，请检查模拟器后重新执行")
         if not self.connection_alive():
             raise TaskIncomplete("模拟器连接在准备期间断开，请重新执行")
@@ -413,7 +413,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 adb_devices.append(device)
         return adb_devices
 
-    def connect_device(self, device):
+    def connect_device(self, device, *, open_from_launcher=True):
         self.connected = False
         controller = AdbController(
             adb_path=device.adb_path,
@@ -437,7 +437,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             self._adb_command = (str(device.adb_path), "-s", str(device.address))
             self.send_log("设备连接成功")
             self.send_log("控制方式：保留 MuMu 专用截图配置，使用 ADB 兼容触控")
-            self.send_log("设备已连接，保留当前页面；开始任务后自动导航")
+            if not open_from_launcher or not self._open_from_android_launcher():
+                self.send_log("设备已连接，保留当前页面；开始任务后自动导航")
         else:
             plyer.notification.notify(
                 title="MaaXuexi",

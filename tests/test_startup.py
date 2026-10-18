@@ -49,14 +49,15 @@ class StartupTests(unittest.TestCase):
              patch("utils.Toolkit.find_adb_devices",return_value=[device]) as find:
             utils.MaaWorker.prepare_device(value)
         find.assert_called_once_with()
-        self.assertIs(value.connect_device.call_args.args[0],device)
+        value.connect_device.assert_called_once_with(device, open_from_launcher=False)
 
     def test_connection_preserves_emulator_screenshot_method_and_extras(self):
         value=worker();value.tasker.bind=Mock(return_value=True)
         device=SimpleNamespace(adb_path="adb.exe",address="127.0.0.1:16384",screencap_methods=64,
                                input_methods=7,config={"extras":{"mumu":{"enable":True,"index":0}}})
         controller=Mock();controller.post_connection.return_value.wait.return_value.succeeded=True
-        with patch("utils.AdbController",return_value=controller) as create:
+        with patch("utils.AdbController",return_value=controller) as create, \
+             patch.object(value, '_open_from_android_launcher', return_value=False):
             self.assertTrue(value.connect_device(device))
         self.assertEqual(create.call_args.kwargs["screencap_methods"],64)
         self.assertIs(create.call_args.kwargs["config"],device.config)

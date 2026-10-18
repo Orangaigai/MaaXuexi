@@ -62,6 +62,28 @@ def recent_media_close(records):
 
 
 class HomeNavigation:
+    def _open_from_android_launcher(self):
+        """Open the target from a confirmed desktop; preserve all other app pages."""
+        command = getattr(self, '_adb_command', None)
+        if not command:
+            return False
+        try:
+            output = subprocess.run([*command, 'shell', 'dumpsys', 'activity', 'activities'],
+                capture_output=True, text=True, encoding='utf-8', errors='replace', check=True,
+                timeout=8, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)).stdout
+        except (OSError, subprocess.SubprocessError):
+            self.send_log('设备已连接，前台应用暂未确认；开始任务时再核对，保留当前页面')
+            return False
+        desktop = any(re.search(r'(?:topResumedActivity|mResumedActivity)=', line) and
+            re.search(r'\bu\d+\s+(?:app\.lawnchair|com\.android\.launcher3)/', line)
+            for line in output.splitlines())
+        if not desktop:
+            return False
+        if not self.tasker.controller.post_start_app('cn.xuexi.android').wait().succeeded:
+            raise TaskIncomplete('设备已连接，但从 MuMu 桌面启动学习强国失败；未点击广告，请查看启动日志')
+        self.send_log('已识别 MuMu 桌面，已发出学习强国启动请求；开始任务后确认首页并核分')
+        return True
+
     def _dismiss_recent_media(self):
         records = self._screen_records()
         self._guard_verification(records)
@@ -189,7 +211,9 @@ class HomeNavigation:
         # A system dialog or another app may cover an existing detail activity.
         # Starting alone would resume that activity, so reset the app in both cases.
         # Login and access-verification screens were guarded before any mutation.
-        self.tasker.controller.post_stop_app('cn.xuexi.android').wait()
-        self.tasker.controller.post_start_app('cn.xuexi.android').wait()
-        self.send_log('已打开学习强国，按实际画面等待开屏结束及首页稳定')
+        if not self.tasker.controller.post_stop_app('cn.xuexi.android').wait().succeeded:
+            raise TaskIncomplete('学习强国停止命令未成功，未继续启动或点击页面')
+        if not self.tasker.controller.post_start_app('cn.xuexi.android').wait().succeeded:
+            raise TaskIncomplete('学习强国启动命令未成功，未进入首页等待或点击页面')
+        self.send_log('学习强国启动命令已成功，按实际画面等待开屏结束及首页稳定')
         return self._wait_home_ready(notification_dismissed=notification_dismissed)

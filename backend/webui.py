@@ -19,7 +19,7 @@ from pydantic import BaseModel, SecretStr, ConfigDict, field_validator, StrictBo
 from key_store import key_configured, load_key, save_key
 from provider_support import MODEL, invalidate_validation, provider_metadata, test_connection
 from utils import MaaWorker
-from task_support import VERSION, read_report, ordered_tasks, ALIASES
+from task_support import VERSION, read_report, ordered_tasks, ALIASES, TaskIncomplete
 from comment_tasks import comment_policy
 
 class ConfigModel(BaseModel):
@@ -196,7 +196,11 @@ def connect_device(device: DeviceModel):
     with app_state.lock:
         if task_running():
             raise HTTPException(409, '请先中止当前任务。')
-        return dict(status='success' if ensure_worker().connect_device(device) else 'failed')
+        try:
+            connected = ensure_worker().connect_device(device)
+        except TaskIncomplete as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return dict(status='success' if connected else 'failed')
 
 def execute_tasks(tasks, daily_acceptance=False, verification_first=False):
     try:

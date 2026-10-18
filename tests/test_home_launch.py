@@ -204,6 +204,7 @@ class HomeLaunchTests(unittest.TestCase):
         self.value._app_in_foreground.return_value = False
         def started():
             self.value.tasker.controller.cached_image = np.zeros((1280,720,3), np.uint8)
+            return SimpleNamespace(succeeded=True)
         self.value.tasker.controller.post_start_app.return_value.wait.side_effect = started
         self.value._reset_home()
         self.value.tasker.controller.post_start_app.assert_called_once()
