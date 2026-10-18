@@ -152,6 +152,7 @@ class CommentTests(unittest.TestCase):
 
     def test_expired_owner_verification_does_not_trigger_input_or_navigation_retry(self):
         value=worker();value._comment_open_article=Mock(return_value=ARTICLE)
+        value._comment_read_full_article=Mock(return_value=ARTICLE)
         value.ai_resolver=Mock()
         value._screen_records=Mock(return_value=self.load('article.json'))
         value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[36,1225,128,25])])

@@ -12,6 +12,7 @@ from daily_flow import verification_visible
 from four_player import race_network_error
 from home_navigation import home_ready
 from comment_drafts import ContextCommentDrafts, valid_comment_text, validate_draft, valid_article
+from comment_reading import article_page, append_page
 from task_support import HumanRequired, TaskIncomplete, TaskUnavailable, is_complete
 
 COMMENT_MODE = 'article_context_v1'
@@ -138,7 +139,7 @@ def comment_draft_ready(records, expected_text):
     return None
 
 
-def comment_article(records):
+def comment_article(records, *, require_body=True):
     if verification_visible(records) or comment_feed(records):
         return None
     sources = [r for r in records if 250 <= r['box'][1] < 400 and r['box'][0] < 200
@@ -156,6 +157,8 @@ def comment_article(records):
     body = ''.join(r['text'] for r in sorted(records, key=lambda r:r['box'][1])
                    if 250 <= r['box'][1] < 1100 and r not in titles)
     article = dict(title=''.join(r['text'] for r in titles), body=body, scope=COMMENT_SCOPE)
+    if not require_body:
+        return article if 4 <= len(article['title']) <= 150 else None
     return article if valid_article(article) else None
 
 
@@ -286,7 +289,7 @@ class CommentTasks:
 
     def _comment_open_article(self):
         self._comment_life_selected = False
-        used_titles = CommentJournal().used_articles()
+        used_titles = CommentJournal().used_articles() + getattr(self, '_comment_rejected_titles', [])
         self._reset_home()
         records = self._comment_channel_menu(self._screen_records())
         self._comment_click(self._comment_label(records, '科普中国', 180, 1100))
@@ -307,27 +310,99 @@ class CommentTasks:
                 if len(title) < 6 or any(s in title for s in ('直播', '专题', '订阅', '图集')):
                     continue
                 if comment_card_used(title, used_titles):
-                    self.send_log('观点：跳过本机已有发表尝试的文章，避免在同一篇下重复留言')
+                    self.send_log('观点：跳过已有发表尝试或本轮审核未通过的文章')
                     continue
                 self._comment_click(dict(box=[int(box[0])+20, int(box[1])+30, min(350, int(box[2])-20), 50]))
-                records = self._comment_wait(lambda rs: comment_article(rs) is not None, timeout=45)
-                return comment_article(records)
+                records = self._comment_wait(lambda rs: comment_article(rs, require_body=False) is not None, timeout=45)
+                return comment_article(records, require_body=False)
             if page < 2:
                 self.tasker.controller.post_swipe(350, 1090, 350, 550, 450).wait()
                 self._sleep(.7)
         raise TaskUnavailable('生活百科未找到可确认正文的文章，本日不发表')
 
-    def _prepare_comment_draft(self):
-        article = self._comment_open_article()
-        self.send_log('观点草稿：按正文生成8～20字短评，再独立复核；不合格则跳过')
-        drafts = ContextCommentDrafts(self.ai_resolver)
-        self._comment_draft_engine = drafts
-        draft = drafts.generate(article)
+    def _comment_article_bar(self):
         self._check_active()
-        if draft is None:
-            raise TaskIncomplete('观点草稿或复核未通过：'+str(drafts.last_error)+'；本项跳过，不重复生成')
+        if not self._app_in_foreground():
+            raise TaskIncomplete('阅读全文时应用已离开前台，未继续翻动')
+        rows = self._comment_ocr('观点阅读全文页核对', [20, 1200, 455, 75])
+        if not any('发表观点' in row['text'] for row in rows):
+            raise TaskIncomplete('未确认原文章输入栏，未继续翻动或输入')
+
+    def _comment_article_top(self, title, pages):
+        for _ in range(pages+3):
+            records = self._screen_records()
+            self._guard_verification(records, resume_when=self._comment_resume_ready)
+            if verification_visible(records):
+                records = self._screen_records()
+            current = comment_article(records, require_body=False)
+            if current and article_title_key(current['title']) == article_title_key(title):
+                return
+            self._comment_article_bar()
+            if not self.tasker.controller.post_swipe(350, 350, 350, 1100, 600).wait().succeeded:
+                raise TaskIncomplete('阅读全文后返回篇首触控失败，未输入短评')
+            self._sleep(.6)
+        raise TaskIncomplete('阅读全文后未重新确认同一篇标题，未输入短评')
+
+    def _comment_read_full_article(self, article):
+        lines, prior = [], []
+        for page in range(12):
+            records = self._screen_records()
+            self._guard_verification(records, resume_when=self._comment_resume_ready)
+            if verification_visible(records):
+                records = self._screen_records()
+            if page == 0:
+                current_article = comment_article(records, require_body=False)
+                if not current_article or article_title_key(current_article['title']) != article_title_key(article['title']):
+                    raise TaskIncomplete('全文阅读开始前文章标题已变化，未继续翻动')
+            self._comment_article_bar()
+            current, end = article_page(records, first=page == 0)
+            lines = append_page(lines, current, prior)
+            prior = current
+            body = '\n'.join(lines)
+            self.send_log(f'观点阅读全文：第{page+1}屏，已收集{len(body)}字'+('，已确认文末' if end else ''))
+            report = getattr(self, 'run_report', None)
+            if report is not None:
+                report.task('发表观点', article_reading=dict(title=article['title'], pages=page+1,
+                            characters=len(body), end_observed=end))
+            if len(re.sub(r'\s+', '', body)) > 4000:
+                raise TaskUnavailable('全文超过本模块长度范围，未截断后发布')
+            if end:
+                full = dict(article, body=body)
+                if not valid_article(full):
+                    raise TaskUnavailable('全文不足或不适合授权短评范围，未发布')
+                self._comment_article_top(article['title'], page)
+                return full
+            if page < 11:
+                if not self.tasker.controller.post_swipe(350, 1100, 350, 500, 600).wait().succeeded:
+                    raise TaskIncomplete('阅读全文翻页触控失败，未发布')
+                self._sleep(.6)
+        raise TaskUnavailable('十二屏内未确认文章结尾，未按部分正文发布')
+
+    def _prepare_comment_draft(self):
+        self._comment_rejected_titles = []
+        for candidate in range(3):
+            article = self._comment_open_article()
+            try:
+                article = self._comment_read_full_article(article)
+            except TaskUnavailable as error:
+                self._comment_rejected_titles.append(article['title'])
+                self.send_log('观点：'+str(error)+'；换下一篇候选')
+                continue
+            self.send_log(f'观点候选（{candidate+1}/3）：按正文生成8～20字短评，再独立复核')
+            drafts = ContextCommentDrafts(self.ai_resolver)
+            self._comment_draft_engine = drafts
+            draft = drafts.generate(article)
+            self._check_active()
+            if draft is not None:
+                break
+            if drafts.last_error not in ('draft_failed_local_rules', 'review_rejected'):
+                raise TaskIncomplete('观点生成服务未正常返回：'+str(drafts.last_error)+'；未输入或发布')
+            self._comment_rejected_titles.append(article['title'])
+            self.send_log('观点：该文章短评未通过规则或复核，未输入、未发布；跳过本篇')
+        else:
+            raise TaskUnavailable('三篇候选均未通过观点规则或复核，本轮跳过，未发布')
         records = self._screen_records()
-        current_article = comment_article(records)
+        current_article = comment_article(records, require_body=False)
         report = getattr(self, 'run_report', None)
         if report is not None:
             report.task('发表观点', article_identity=dict(expected=article['title'],
