@@ -117,11 +117,12 @@ def schedule_display(value, options=None, now=None):
     # Compatibility for the previous native RandomDelay plan before migration.
     fields=options.model_dump() if options else dict(mode='random_window' if seconds else 'fixed',
         time=start.strftime('%H:%M'),window_start=start.strftime('%H:%M'),window_end=end.strftime('%H:%M'))
-    next_run=value.get('next_base_run')
+    next_run=value.get('next_base_run') if value.get('enabled') else None
     next_at=datetime.fromisoformat(next_run) if next_run else None
     if next_at is not None:
         next_at=next_at.replace(tzinfo=CHINA) if next_at.tzinfo is None else next_at.astimezone(CHINA)
-    return dict(value,**fields,timezone='Asia/Shanghai',requires_windows_login=True,
+    return dict(value,**fields,execution_mode='automatic' if value['enabled'] else 'manual',
+        timezone='Asia/Shanghai',requires_windows_login=True,
         server_now=now.isoformat(timespec='seconds'),next_run_at=next_at.isoformat(timespec='seconds') if next_at else None,
         seconds_until_next_run=max(0,math.ceil((next_at-now).total_seconds())) if next_at else None,
         defaults=ScheduleOptions().model_dump())
@@ -162,7 +163,32 @@ def rearm_for_run():
     """Rearm before learning, so tomorrow stays scheduled if learning fails."""
     with _schedule_lock():
         options=_load_options()
+        native=_native()
+        if not native['enabled']:
+            return schedule_display(native,options)
         if options is None:
             return None
         next_at,_=plan_next(options,tomorrow=True)
+        return _apply_plan(options,next_at)
+
+
+def set_execution_mode(mode):
+    """Use the native task as the source of truth, including queued launches."""
+    if mode not in ('manual','automatic'):
+        raise ValueError('Unknown execution mode')
+    with _schedule_lock():
+        options=_load_options()
+        native=_native()
+        if mode=='manual':
+            if native['enabled']:
+                native=_native('-Disable')
+            if native['enabled']:
+                raise ValueError('Windows 未确认关闭定时启动')
+            return schedule_display(native,options)
+        if native['enabled']:
+            return schedule_display(native,options)
+        if options is None:
+            options=ScheduleOptions()
+        next_at,_=plan_next(options)
+        # Enabling schedules a future run; only an explicit Save can run now.
         return _apply_plan(options,next_at)

@@ -6,4 +6,7 @@ from schedule_support import rearm_for_run
 
 if __name__=='__main__':
     plan=rearm_for_run()
+    if plan and not plan['enabled']:
+        print('Manual execution selected; automatic launcher skipped.')
+        sys.exit(4)
     print('Next automatic run: '+plan['next_run_at'] if plan else 'No editable schedule configured; retained the native trigger.')

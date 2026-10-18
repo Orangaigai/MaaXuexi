@@ -29,6 +29,7 @@ try {
     catch [IO.IOException] { Write-RunLog 'Another daily launcher is running; skipped.'; exit 0 }
     try {
         & (Join-Path $appRoot '.venv\Scripts\python.exe') (Join-Path $PSScriptRoot 'Plan-NextRun.py') *>&1 | ForEach-Object { Write-RunLog ([string]$_) }
+        if ($LASTEXITCODE -eq 4) { Write-RunLog 'Manual mode selected; no automatic task submitted.'; exit 0 }
         if ($LASTEXITCODE -ne 0) { throw 'Next-time update failed.' }
     } catch { Write-RunLog 'Could not update the next automatic time; existing Windows trigger retained. Check the schedule panel.' }
     $health = $null

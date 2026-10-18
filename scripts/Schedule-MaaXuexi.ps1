@@ -1,4 +1,4 @@
-param([switch]$Apply, [string]$StartAt)
+param([switch]$Apply, [string]$StartAt, [switch]$Disable)
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 $taskName = 'MaaXuexi-Daily-0900'
@@ -13,20 +13,25 @@ function New-MaaDailyTrigger([string]$StartAt) {
 }
 
 $task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
-if ($Apply) {
+if ($Apply -and $Disable) { throw 'Choose one schedule operation.' }
+if ($Apply -or $Disable) {
     $actions = @($task.Actions)
     $expectedExe = Join-Path $appRoot '.venv\Scripts\pythonw.exe'
     $expectedArgs = '"' + (Join-Path $appRoot 'scripts\Launch-Hidden.py') + '" --daily'
     if ($actions.Count -ne 1 -or $actions[0].Execute -ne $expectedExe -or $actions[0].Arguments -ne $expectedArgs) {
         throw 'The scheduled task action does not belong to this MaaXuexi installation.'
     }
-    $trigger = New-MaaDailyTrigger $StartAt
     $logRoot = Join-Path $appRoot 'logs'
     $null = New-Item -ItemType Directory -Path $logRoot -Force
     Export-ScheduledTask -TaskName $taskName | Set-Content -LiteralPath (Join-Path $logRoot 'schedule-before-last-change.xml') -Encoding Unicode
-    $task.Settings.StartWhenAvailable = $true
-    $null = Set-ScheduledTask -TaskName $taskName -Trigger $trigger -Settings $task.Settings
-    $null = Enable-ScheduledTask -TaskName $taskName
+    if ($Disable) {
+        $null = Disable-ScheduledTask -TaskName $taskName
+    } else {
+        $trigger = New-MaaDailyTrigger $StartAt
+        $task.Settings.StartWhenAvailable = $true
+        $null = Set-ScheduledTask -TaskName $taskName -Trigger $trigger -Settings $task.Settings
+        $null = Enable-ScheduledTask -TaskName $taskName
+    }
     $task = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
 }
 $triggers = @($task.Triggers)

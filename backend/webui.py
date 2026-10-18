@@ -22,11 +22,15 @@ from provider_support import MODEL, invalidate_validation, provider_metadata, te
 from utils import MaaWorker
 from task_support import VERSION, read_report, ordered_tasks, ALIASES, TaskIncomplete
 from comment_tasks import comment_policy
-from schedule_support import ScheduleOptions, read_schedule, save_schedule
+from schedule_support import ScheduleOptions, read_schedule, save_schedule, set_execution_mode
 
 class ConfigModel(BaseModel):
     api_key: SecretStr = SecretStr('')
     model: str = MODEL
+
+class ExecutionMode(BaseModel):
+    mode: Literal['manual','automatic']
+    model_config = ConfigDict(extra='forbid')
 
 class DeviceModel(BaseModel):
     name: str
@@ -164,6 +168,16 @@ def get_comment_policy():
 @app.get('/api/local/schedule')
 def get_schedule():
     return read_schedule()
+
+@app.post('/api/local/execution-mode')
+def update_execution_mode(options: ExecutionMode):
+    try:
+        result=set_execution_mode(options.mode)
+    except (OSError,ValueError,subprocess.SubprocessError) as error:
+        raise HTTPException(503,'执行方式未能更新，请稍后重试。') from error
+    return dict(result,status='success',message=(
+        '已切换为手动执行，定时启动已关闭。正在运行的任务不受影响。' if options.mode=='manual'
+        else '已启用定时自动执行；修改时间后请保存。'))
 
 def start_saved_plan(*, unattended=False):
     if task_running():

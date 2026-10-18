@@ -118,9 +118,9 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(json.loads(self.path.read_text())['planned_at'],at)
 
     def test_no_new_configuration_does_not_modify_the_existing_native_trigger(self):
-        with patch('schedule_support._native') as native:
+        with patch('schedule_support._native',return_value=self.native()) as native:
             self.assertIsNone(schedules.rearm_for_run())
-        native.assert_not_called()
+        native.assert_called_once_with()
 
     def test_countdown_comes_from_actual_native_time_not_browser_clock_or_window_start(self):
         result=schedule_display(self.native(),ScheduleOptions(),clock('07:32:00'))

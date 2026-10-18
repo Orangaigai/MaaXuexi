@@ -32,7 +32,7 @@
     for(const[name,input]of inputs)input.disabled=!loaded||busy||running||(name==='发表观点'&&!commentEnabled);
     $('start').disabled=!loaded||busy||running||!health;
     $('save').disabled=!loaded||busy||running;
-    $('baseOnly').disabled=!loaded||busy||running;
+    $('saveBase').disabled=!loaded||busy||running;
     $('pause').hidden=!running||paused;$('pause').disabled=busy||requested;
     $('pause').textContent=requested?'正在暂停…':'暂停';
     $('resume').hidden=!health?.can_continue;$('resume').disabled=busy||!health;
@@ -43,8 +43,8 @@
   async function act(path,body,message){
     busy=true;controls();
     const target=['/api/pause','/api/continue','/api/stop'].includes(path)?$('runMessage'):$('actionMessage');
-    try{const result=await request(path,body);target.textContent=result.message||message;await refresh();}
-    catch(error){target.textContent=error.message;}
+    try{const result=await request(path,body);target.textContent=result.message||message;await refresh();return result;}
+    catch(error){target.textContent=error.message;return null;}
     finally{busy=false;controls();}
   }
   $('start').onclick=()=>{
@@ -55,15 +55,16 @@
     }
     act('/api/start',body,'已开始执行所选任务。');
   };
+  async function savePlan(body){
+    const result=await act('/api/local/task-plan',body,'任务清单已保存。');
+    if(result)for(const[name,input]of inputs)input.checked=result.tasklist.includes(name);
+  }
   $('save').onclick=()=>{
     const body=plan();
     if(!body.tasklist.length){$('actionMessage').textContent='请至少选择一项任务。';return;}
-    act('/api/local/task-plan',body,'任务清单已保存，用于每日定时。');
+    savePlan(body);
   };
-  $('baseOnly').onclick=()=>{
-    for(const[name,input]of inputs)input.checked=!verificationTasks.has(name);
-    $('actionMessage').textContent='已选择基础任务，可立即执行或保存清单。';
-  };
+  $('saveBase').onclick=()=>savePlan({tasklist:names.filter(name=>!verificationTasks.has(name)),fast_answer:false,debug:false});
   $('pause').onclick=()=>act('/api/pause',{},'已请求暂停。');
   $('stop').onclick=()=>act('/api/stop',{},'已请求中止。');
   $('resume').onclick=()=>act('/api/continue',{},'已开始续做，将核对积分并跳过已完成项目。');
@@ -139,8 +140,8 @@
     await refresh();
     try{
       const policy=await request('/api/local/comment-policy');commentEnabled=policy.enabled;
-      $('commentPolicy').textContent=policy.enabled?'发表观点已启用，仅用于科普生活内容。':'发表观点尚未授权，暂不可选。';
-    }catch{$('commentPolicy').textContent='观点设置暂未读到，暂不可选。';}
+    }catch{commentEnabled=false;}
+    inputs.get('发表观点').title=commentEnabled?'':'发表观点尚未授权或设置暂不可用。';
     try{
       const saved=await request('/api/local/task-plan');
       for(const[name,input]of inputs)input.checked=saved.tasklist.includes(name);loaded=true;
