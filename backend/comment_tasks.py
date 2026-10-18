@@ -29,7 +29,7 @@ def comment_policy():
     enabled = (isinstance(value, dict) and value.get('enabled') is True
                and value.get('mode') == COMMENT_MODE and value.get('scope') == COMMENT_SCOPE)
     return dict(enabled=enabled, mode=COMMENT_MODE, scope=COMMENT_SCOPE, daily_limit=1,
-                min_chars=8, max_chars=20, model_review=True,
+                min_chars=8, max_chars=28, model_review=True,
                 unattended_attempt_limit=1, owner_started_retry=True)
 
 
@@ -127,6 +127,23 @@ def comment_feed(records, *, allow_collapsed=False):
             and len(channels & {'行走中国', '乡村振兴', '科普中国', '国际', '经济'}) >= 3)
 
 
+def comment_text_key(text):
+    """OCR may change exclamation width; retain every word and punctuation mark."""
+    return re.sub(r'\s+', '', text).replace('!', '！')
+
+
+def comment_text_matches(rows, expected_text):
+    """Compare one line or two adjacent wrapped lines, never unrelated OCR rows."""
+    if not 1 <= len(rows) <= 2:
+        return False
+    rows = sorted(rows, key=lambda r:r['box'][1])
+    if len(rows) == 2:
+        first, second = (row['box'] for row in rows)
+        if abs(first[0]-second[0]) > 35 or not -8 <= second[1]-first[1]-first[3] <= 35:
+            return False
+    return ''.join(comment_text_key(row['text']) for row in rows) == comment_text_key(expected_text)
+
+
 def comment_draft_ready(records, expected_text):
     """Both the whole input text and its own publish button must be recognized."""
     if verification_visible(records) or not valid_comment_text(expected_text):
@@ -134,7 +151,7 @@ def comment_draft_ready(records, expected_text):
     text = [r for r in records if 25 <= r['box'][0] < 580 and 1100 <= r['box'][1] < 1190]
     buttons = [r for r in records if r['text'].strip() == '发布'
                and 600 <= r['box'][0] < 700 and 1200 <= r['box'][1] < 1265]
-    if len(text) == 1 and re.sub(r'\s+', '', text[0]['text']) == expected_text and len(buttons) == 1:
+    if comment_text_matches(text, expected_text) and len(buttons) == 1:
         return buttons[0]
     return None
 
@@ -166,14 +183,17 @@ def comment_posted(records, expected_text):
     """Own visible comment is a continuation page, not proof of score credit."""
     if not expected_text or verification_visible(records):
         return False
-    texts = [r for r in records if re.sub(r'\s+', '', r['text']) == expected_text
-             and 250 <= r['box'][1] < 1120]
-    for row in texts:
-        y = row['box'][1]
-        delete = [r for r in records if r['text'].strip() == '删除' and y < r['box'][1] < y+130]
-        reply = [r for r in records if '回复' in r['text'] and y < r['box'][1] < y+130]
-        if len(delete) == 1 and reply:
-            return True
+    texts = sorted((r for r in records if 250 <= r['box'][1] < 1120),key=lambda r:r['box'][1])
+    for index in range(len(texts)):
+        for count in (1,2):
+            block = texts[index:index+count]
+            if not comment_text_matches(block, expected_text):
+                continue
+            y = block[-1]['box'][1]
+            delete = [r for r in records if r['text'].strip() == '删除' and y < r['box'][1] < y+130]
+            reply = [r for r in records if '回复' in r['text'] and y < r['box'][1] < y+130]
+            if len(delete) == 1 and reply:
+                return True
     return False
 
 
@@ -403,7 +423,7 @@ class CommentTasks:
                 self._comment_rejected_titles.append(article['title'])
                 self.send_log('观点：'+str(error)+'；换下一篇候选')
                 continue
-            self.send_log(f'观点候选（{candidate+1}/3）：按正文生成8～20字短评，再独立复核')
+            self.send_log(f'观点候选（{candidate+1}/3）：按正文生成8～28字口语短评，再独立复核')
             drafts = ContextCommentDrafts(self.ai_resolver)
             self._comment_draft_engine = drafts
             draft = drafts.generate(article)

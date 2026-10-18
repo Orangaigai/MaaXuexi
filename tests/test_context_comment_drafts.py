@@ -69,12 +69,12 @@ class DraftTests(unittest.TestCase):
             self.assertIsNone(validate_draft(dict(DRAFT,**changes),ARTICLE))
 
     def test_newline_link_number_emoji_or_multiple_sentences_are_not_silently_repaired(self):
-        for text in ('学习知识。继续学习。','我今天学到了好多知识。','认真学习有益于增长知识！',
+        for text in ('学习知识。继续学习。','我今天学到了好多知识。','认真学习有益于增长知识！！',
                      '认真学习有益于增长知识。\n','学习知识请看https://a.cn。','每天学习二十分钟收获100分。','认真学习增长知识。😊'):
             self.assertIsNone(validate_draft(dict(DRAFT,comment=text),ARTICLE))
 
     def test_length_bounds_and_absolute_promises_fail(self):
-        for text in ('认真学习。','绝对保证人工智能没有情感。','知识'*11+'。'):
+        for text in ('认真学习。','绝对保证人工智能没有情感。','知识'*15+'。'):
             self.assertIsNone(validate_draft(dict(DRAFT,comment=text),ARTICLE))
 
     def test_fabricated_evidence_is_rejected(self):
