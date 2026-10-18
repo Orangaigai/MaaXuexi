@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +11,11 @@ from schedule_support import read_schedule,schedule_display
 
 
 class ScheduleTests(unittest.TestCase):
+    def setUp(self):
+        temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup)
+        config=patch('schedule_support.CONFIG_PATH',Path(temporary.name)/'schedule.json')
+        config.start();self.addCleanup(config.stop)
+
     def data(self):
         return dict(available=True,enabled=True,start_boundary='2026-10-19T07:40:00+08:00',
             random_delay_seconds=4500,start_when_available=True,task_name='MaaXuexi-Daily-0900')
@@ -37,19 +43,19 @@ class ScheduleTests(unittest.TestCase):
         self.assertNotIn('-Apply',run.call_args.args[0])
 
     @unittest.skipUnless(os.name=='nt','Windows trigger construction')
-    def test_morning_trigger_uses_native_random_delay_and_next_eligible_day(self):
+    def test_daily_trigger_uses_the_exact_chosen_time_without_another_random_delay(self):
         script=Path(__file__).resolve().parents[1]/'scripts/Schedule-MaaXuexi.ps1'
         code=r'''
 $ErrorActionPreference='Stop'
 $tokens=$null;$errors=$null
 $ast=[Management.Automation.Language.Parser]::ParseFile($env:MAA_SCHEDULE_SCRIPT,[ref]$tokens,[ref]$errors)
 if($errors.Count){throw 'Schedule syntax error'}
-$fn=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'New-MaaMorningTrigger'},$true)
+$fn=$ast.Find({param($n) $n -is [Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq 'New-MaaDailyTrigger'},$true)
 Invoke-Expression $fn.Extent.Text
 function New-ScheduledTaskTrigger { param([switch]$Daily,$At,$RandomDelay)
-    [pscustomobject]@{StartBoundary='';Daily=[bool]$Daily;Delay=$RandomDelay.TotalSeconds} }
-$early=New-MaaMorningTrigger ([DateTimeOffset]'2026-10-18T07:30:00+08:00')
-$late=New-MaaMorningTrigger ([DateTimeOffset]'2026-10-18T12:00:00+08:00')
+    [pscustomobject]@{StartBoundary='';Daily=[bool]$Daily;Delay=$RandomDelay} }
+$early=New-MaaDailyTrigger '2026-10-19T08:12:34+08:00'
+$late=New-MaaDailyTrigger '2026-10-19T09:00:00+08:00'
 @{early=$early;late=$late}|ConvertTo-Json -Depth 4 -Compress
 '''
         result=subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',code],
@@ -57,6 +63,6 @@ $late=New-MaaMorningTrigger ([DateTimeOffset]'2026-10-18T12:00:00+08:00')
             creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         self.assertEqual(result.returncode,0,result.stderr)
         values=json.loads(result.stdout)
-        self.assertEqual(values['early']['StartBoundary'],'2026-10-18T07:40:00+08:00')
-        self.assertEqual(values['late']['StartBoundary'],'2026-10-19T07:40:00+08:00')
-        self.assertTrue(values['early']['Daily']);self.assertEqual(values['early']['Delay'],4500)
+        self.assertEqual(values['early']['StartBoundary'],'2026-10-19T08:12:34+08:00')
+        self.assertEqual(values['late']['StartBoundary'],'2026-10-19T09:00:00+08:00')
+        self.assertTrue(values['early']['Daily']);self.assertIsNone(values['early']['Delay'])

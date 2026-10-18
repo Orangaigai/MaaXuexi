@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import subprocess
 import threading
 import traceback
 from collections import deque
@@ -21,7 +22,7 @@ from provider_support import MODEL, invalidate_validation, provider_metadata, te
 from utils import MaaWorker
 from task_support import VERSION, read_report, ordered_tasks, ALIASES, TaskIncomplete
 from comment_tasks import comment_policy
-from schedule_support import read_schedule
+from schedule_support import ScheduleOptions, read_schedule, save_schedule
 
 class ConfigModel(BaseModel):
     api_key: SecretStr = SecretStr('')
@@ -122,6 +123,7 @@ def homepage():
     html = Path('page/index.html').read_text('utf-8')
     html = html.replace('</body>', '<script defer src="/assets/local-provider.js"></script></body>')
     html = html.replace('/assets/local-provider.js', '/assets/local-provider.js?v=' + VERSION)
+    html = html.replace('</body>', '<script defer src="/assets/local-schedule.js?v=' + VERSION + '"></script></body>')
     return HTMLResponse(html, headers={'Cache-Control':'no-store'})
 
 @app.get('/local/api-key')
@@ -160,6 +162,30 @@ def get_comment_policy():
 @app.get('/api/local/schedule')
 def get_schedule():
     return read_schedule()
+
+def start_saved_plan(*, unattended=False):
+    if task_running():
+        return dict(status='failed',message='已有任务正在执行，不重复启动。')
+    return start_selected(TaskModel(tasklist=get_task_plan()['tasklist'],unattended=unattended))
+
+@app.post('/api/local/schedule/run-now')
+def run_schedule_now():
+    return start_saved_plan()
+
+@app.post('/api/local/schedule')
+def update_schedule(options: ScheduleOptions):
+    try:
+        result=save_schedule(options)
+    except (OSError,ValueError,subprocess.SubprocessError) as error:
+        raise HTTPException(503,'定时计划未能保存，请稍后重试或查看后台日志。') from error
+    result['status']='success'
+    if result['trigger_immediately']:
+        started=start_saved_plan(unattended=True)
+        result['immediate_status']=started['status']
+        result['message']='定时已保存；当前在设置时段内，已立即执行每日任务清单。' if started['status']=='success' else '定时已保存；'+started.get('message','立即执行未启动。')
+    else:
+        result['message']='定时计划已保存。'
+    return result
 
 @app.post('/api/local/task-plan')
 def save_task_plan(plan: TaskModel):

@@ -27,6 +27,10 @@ $powerHeld = $false
 try {
     try { $runLock = [IO.File]::Open((Join-Path $logRoot 'daily-run.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None) }
     catch [IO.IOException] { Write-RunLog 'Another daily launcher is running; skipped.'; exit 0 }
+    try {
+        & (Join-Path $appRoot '.venv\Scripts\python.exe') (Join-Path $PSScriptRoot 'Plan-NextRun.py') *>&1 | ForEach-Object { Write-RunLog ([string]$_) }
+        if ($LASTEXITCODE -ne 0) { throw 'Next-time update failed.' }
+    } catch { Write-RunLog 'Could not update the next automatic time; existing Windows trigger retained. Check the schedule panel.' }
     $health = $null
     try { $health = Invoke-RestMethod ($baseUrl+'/api/status') -TimeoutSec 5 } catch { }
     if ($health -and $health.task_running) {
