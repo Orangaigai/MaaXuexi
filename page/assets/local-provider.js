@@ -31,13 +31,24 @@
   }
   const plan=()=>({tasklist:[...inputs].filter(([,input])=>input.checked).map(([name])=>name),fast_answer:false,debug:false});
   const selectionKey=tasks=>[...tasks].sort().join('|');
+  function renderActionEmphasis(){
+    const configureFirst=provider?.configured===false&&plan().tasklist.some(name=>aiTasks.has(name));
+    const continueFirst=Boolean(health?.can_continue);
+    $('start').classList.toggle('primary',!configureFirst&&!continueFirst);
+    $('start').classList.toggle('accent',configureFirst||continueFirst);
+    $('providerSetup').classList.toggle('primary',configureFirst);
+  }
   function renderSavedState(){
     const changed=savedTasks!==null&&selectionKey(plan().tasklist)!==selectionKey(savedTasks);
     $('taskEditState').textContent=!loaded?'读取中':changed?'有修改，尚未保存':'已保存';
     $('taskEditState').classList.toggle('unsaved',changed);
+    renderActionEmphasis();
   }
   function controls(){
     const running=Boolean(health?.task_running),paused=Boolean(health?.paused),requested=Boolean(health?.pause_requested);
+    $('runtimeCard').classList.toggle('is-running',running&&!paused);
+    $('runtimeCard').classList.toggle('is-waiting',Boolean(paused||health?.can_continue));
+    $('runtimeCard').classList.toggle('is-complete',!running&&health?.run_summary?.status==='completed');
     for(const[name,input]of inputs)input.disabled=!loaded||busy||running||(name==='发表观点'&&!commentEnabled);
     $('start').disabled=!loaded||busy||running||!health;
     $('save').disabled=!loaded||busy||running;
@@ -111,7 +122,7 @@
     $('providerHint').textContent=issue?'最近任务：'+issue+'。详情见运行结果。':provider?.configured?
       '用于自动答题；开启观点时也会生成短评。':'自动答题需要先配置 DeepSeek API 密钥，也可先使用基础任务。';
     $('providerSetup').textContent=provider?.configured?'管理密钥':'配置密钥';
-    $('providerSetup').classList.toggle('primary',provider?.configured===false);
+    renderActionEmphasis();
   }
   async function refreshProvider(){
     try{provider=await request('/api/local/provider');renderProvider();}
@@ -129,10 +140,17 @@
     for(const[name,row]of Object.entries(run?.tasks||{})){
       if(!names.includes(name))continue;
       const tr=document.createElement('tr'),score=row.after||row.before;
+      tr.className='result-'+row.state;
       const mode=name==='趣味答题'&&['挑战答题','双人对战','四人赛'].includes(row.metrics?.mode)?row.metrics.mode:null;
-      const values=[mode?`${name}（${mode}）`:name,score?`${score.value}/${score.maximum}`:'待核对',
-        (labels[row.state]||row.state)+(row.reason?'；'+displayReason(row.reason):'')];
+      const values=[mode?`${name}（${mode}）`:name,score?`${score.value}/${score.maximum}`:'待核对'];
       for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td);}
+      const result=document.createElement('td'),badge=document.createElement('span');
+      badge.className='result-label';badge.textContent=labels[row.state]||row.state;result.append(badge);
+      if(row.reason){
+        const reason=document.createElement('span');reason.className='result-reason';
+        reason.textContent=displayReason(row.reason);result.append(reason);
+      }
+      tr.append(result);
       $('results').append(tr);
     }
     if(!$('results').children.length){
