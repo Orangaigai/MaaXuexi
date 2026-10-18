@@ -17,6 +17,29 @@ COMMENT_TEXT=existing.COMMENT_TEXT
 
 
 class AttendedJournalTests(unittest.TestCase):
+    def article_rows(self):
+        return [dict(text='这是一篇比较长的科普文章标题',box=[28,191,607,34]),
+                dict(text='为什么呢？',box=[21,242,160,45]),
+                dict(text='来源：科普中国',box=[23,324,132,22]),
+                dict(text='这是用于测试标题换行后的完整正文。'*8,box=[25,925,650,100])]
+
+    def test_wrapped_title_is_joined_in_screen_order_before_its_source(self):
+        rows=self.article_rows()
+        article=comment_tasks.comment_article(list(reversed(rows)))
+        self.assertEqual(article['title'],rows[0]['text']+rows[1]['text'])
+        self.assertNotIn(rows[1]['text'],article['body'])
+
+    def test_unrelated_separated_title_rows_are_not_combined(self):
+        rows=self.article_rows();rows[1]['box'][1]=285
+        self.assertIsNone(comment_tasks.comment_article(rows))
+
+    def test_multiline_title_does_not_replace_required_body(self):
+        self.assertIsNone(comment_tasks.comment_article(self.article_rows()[:3]))
+
+    def test_multiline_title_does_not_relax_verification_detection(self):
+        rows=self.article_rows()+[dict(text='访问验证',box=[250,100,180,40])]
+        self.assertIsNone(comment_tasks.comment_article(rows))
+
     def test_truncated_card_still_skips_a_previously_attempted_full_title(self):
         self.assertTrue(comment_tasks.comment_card_used('卫生纸为什么要压花？是为了卖...', ['卫生纸为什么要压花？是为了卖贵点吗？']))
         self.assertFalse(comment_tasks.comment_card_used('天气变化时应该如何选择合适的衣物', ['卫生纸为什么要压花？是为了卖贵点吗？']))

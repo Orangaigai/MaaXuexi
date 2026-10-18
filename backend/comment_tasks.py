@@ -145,12 +145,17 @@ def comment_article(records):
                and re.match(r'^来源[：:]', r['text'].strip())]
     if len(sources) != 1:
         return None
-    titles = [r for r in records if 150 <= r['box'][1] < 250 and r['box'][0] < 100]
-    if len(titles) != 1:
+    titles = sorted((r for r in records if 150 <= r['box'][1] < min(300, sources[0]['box'][1]-15)
+                     and r['box'][0] < 100), key=lambda r:r['box'][1])
+    if not 1 <= len(titles) <= 3:
+        return None
+    if any(abs(left['box'][0]-right['box'][0]) > 30
+           or not -8 <= right['box'][1]-left['box'][1]-left['box'][3] <= 40
+           for left, right in zip(titles, titles[1:])):
         return None
     body = ''.join(r['text'] for r in sorted(records, key=lambda r:r['box'][1])
-                   if 250 <= r['box'][1] < 1100)
-    article = dict(title=titles[0]['text'], body=body, scope=COMMENT_SCOPE)
+                   if 250 <= r['box'][1] < 1100 and r not in titles)
+    article = dict(title=''.join(r['text'] for r in titles), body=body, scope=COMMENT_SCOPE)
     return article if valid_article(article) else None
 
 
