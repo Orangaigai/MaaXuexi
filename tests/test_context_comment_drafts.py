@@ -52,7 +52,7 @@ class DraftTests(unittest.TestCase):
     def test_generation_varies_wording_but_independent_review_remains_deterministic(self):
         resolver=Mock(model='offline-model');resolver._post.side_effect=[response(DRAFT),response(REVIEW)]
         self.assertIsNotNone(ContextCommentDrafts(resolver).generate(ARTICLE))
-        self.assertEqual([call.args[0]['temperature'] for call in resolver._post.call_args_list],[.4,0])
+        self.assertEqual([call.args[0]['temperature'] for call in resolver._post.call_args_list],[.6,0])
 
     def test_valid_comment_is_related_to_real_source_quote(self):
         self.assertTrue(valid_article(ARTICLE))

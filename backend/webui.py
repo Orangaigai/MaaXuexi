@@ -21,6 +21,7 @@ from provider_support import MODEL, invalidate_validation, provider_metadata, te
 from utils import MaaWorker
 from task_support import VERSION, read_report, ordered_tasks, ALIASES, TaskIncomplete
 from comment_tasks import comment_policy
+from schedule_support import read_schedule
 
 class ConfigModel(BaseModel):
     api_key: SecretStr = SecretStr('')
@@ -155,6 +156,10 @@ def get_task_plan():
 @app.get('/api/local/comment-policy')
 def get_comment_policy():
     return comment_policy()
+
+@app.get('/api/local/schedule')
+def get_schedule():
+    return read_schedule()
 
 @app.post('/api/local/task-plan')
 def save_task_plan(plan: TaskModel):

@@ -15,7 +15,7 @@
 <div class="bar"><button id="stop" hidden>中止当前任务</button><button id="resume" hidden>处理完成，继续任务</button><select id="device" hidden aria-label="选择模拟器"></select><button id="connect" hidden>连接模拟器</button></div>
 <p class="muted">自动执行需要电脑开机、登录 Windows、未休眠且联网。关闭此网页不会停止后台。</p></section>
 <section class="card"><h2>任务清单</h2><div id="choices"></div>
-<div class="bar"><button class="primary" id="start" disabled>执行所选任务</button><button id="save" disabled>保存为每天 9:00 清单</button></div>
+<div class="bar"><button class="primary" id="start" disabled>执行所选任务</button><button id="save" disabled>保存为每日自动任务清单</button></div>
 <p id="actionMessage" role="status" aria-live="polite"></p>
 <p class="muted">执行顺序：登录→文章12分→视频12分→本地频道1分→趣味答题最高10分→订阅2分→发表观点1分→每日答题5分；登录是前置步骤；先做通常无需验证的任务，再按分数执行可能验证的任务，模拟器上频繁验证的每日答题最后。订阅、观点和趣味均出现过验证，不能保证免验证。只执行所选项目，已满分或已领取对战首局积分会跳过。本地频道自动识别当前地区，打开地区平台后核分。订阅逐个核分，随后只取消本机新增的关注，保留历史用于去重。趣味按当日计分入口执行，一局后返回核分。网络错误最多点重试一次。只需启动一次：真实验证或登录由本人在 MuMu 完成，程序观察页面恢复后继续，无需再点网页执行或继续。定时运行每次最多等候10分钟，超时结束并报告剩余项目。实机验收范围见本机说明。</p>
 <p class="muted" id="commentPolicy">发表观点：配置读取中，暂不发布。</p>

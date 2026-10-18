@@ -103,6 +103,11 @@ class CommentJournal:
         with self._connect() as db:
             return [r['article'] for r in db.execute('SELECT DISTINCT article FROM comment_attempts')]
 
+    def recent_texts(self):
+        with self._connect() as db:
+            return [row['text'] for row in db.execute(
+                'SELECT text FROM comment_attempts ORDER BY rowid DESC LIMIT 8')]
+
 
 def article_title_key(text):
     return re.sub(r'\W+', '', text)
@@ -426,7 +431,7 @@ class CommentTasks:
             self.send_log(f'观点候选（{candidate+1}/3）：按正文生成8～28字口语短评，再独立复核')
             drafts = ContextCommentDrafts(self.ai_resolver)
             self._comment_draft_engine = drafts
-            draft = drafts.generate(article)
+            draft = drafts.generate(article, recent_comments=CommentJournal().recent_texts())
             self._check_active()
             if draft is not None:
                 break
