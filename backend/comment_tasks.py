@@ -108,7 +108,10 @@ def article_title_key(text):
 
 def comment_card_used(signature, titles):
     card = article_title_key(signature)
-    return any(len(article_title_key(title)) >= 4 and article_title_key(title) in card for title in titles)
+    keys = [article_title_key(title) for title in titles]
+    # A list card can omit the title's ending. An exact twelve-character prefix
+    # is sufficient to skip it; full title checks before writing remain strict.
+    return any(len(key) >= 4 and (key in card or (len(key)>12 and key[:12] in card)) for key in keys)
 
 
 def comment_feed(records, *, allow_collapsed=False):
@@ -370,7 +373,9 @@ class CommentTasks:
             raise TaskIncomplete('今天已有发表尝试，未重复发送')
         # The durable reservation deliberately remains even if the click times out.
         self._comment_click(button)
+        self.send_log('观点：已点击发布，等待编辑框响应与平台验证；是否加分以核分为准')
         self._comment_wait(lambda _: self._comment_publish_target(draft['comment']) is None)
+        self.send_log('观点：编辑框已关闭，自动恢复首页并核分')
         self._comment_restore_home()
         self._score_refresh_required = True
         after = self.read_learning_score(['发表观点'])['发表观点']

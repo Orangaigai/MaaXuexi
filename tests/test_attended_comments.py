@@ -17,6 +17,10 @@ COMMENT_TEXT=existing.COMMENT_TEXT
 
 
 class AttendedJournalTests(unittest.TestCase):
+    def test_truncated_card_still_skips_a_previously_attempted_full_title(self):
+        self.assertTrue(comment_tasks.comment_card_used('卫生纸为什么要压花？是为了卖...', ['卫生纸为什么要压花？是为了卖贵点吗？']))
+        self.assertFalse(comment_tasks.comment_card_used('天气变化时应该如何选择合适的衣物', ['卫生纸为什么要压花？是为了卖贵点吗？']))
+
     def setUp(self):
         temporary=tempfile.TemporaryDirectory();self.addCleanup(temporary.cleanup)
         self.path=Path(temporary.name)/'comments.sqlite3'
