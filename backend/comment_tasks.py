@@ -328,32 +328,18 @@ class CommentTasks:
 
     def _comment_restore_home(self):
         self._guard_verification()
-        records=self._screen_records()
+        records = self._screen_records()
         if home_ready(records):
             self._wait_home_ready(timeout=20)
             return
-        if self._comment_native_life_page(records):
-            self._comment_click(dict(text='科普频道返回',box=[12,44,58,60]))
-            self._wait_home_ready(timeout=20)
-            return
-        # Only return from a recognized article, then restore the Recommended tab.
-        entry = self._comment_ocr('观点返回文章核对', [20, 1200, 455, 75])
-        if not any('发表观点' in r['text'] for r in entry):
-            raise TaskIncomplete('观点提交后未回到普通文章页，保留现场，不重复发表')
-        # Android Back can merely clear the WebView/editor focus after posting.
-        # The recognized article has its own visible top-left navigation button.
-        self._comment_click(dict(text='文章返回', box=[12, 44, 58, 60]))
-        records = self._comment_wait(lambda rows: self._comment_native_life_page(rows) or self._comment_life_feed(rows) or home_ready(rows))
-        if self._comment_native_life_page(records):
-            self._comment_click(dict(text='科普频道返回',box=[12,44,58,60]))
-            self._wait_home_ready(timeout=20)
-            return
-        if home_ready(records):
-            self._wait_home_ready(timeout=20)
-            return
-        records = self._comment_channel_menu(records)
-        self._comment_click(self._comment_label(records, '推荐', 180, 1100))
-        self._wait_home_ready(timeout=20)
+        if not self._comment_native_life_page(records):
+            entry = self._comment_ocr('观点返回文章核对', [20, 1200, 455, 75])
+            if not any('发表观点' in r['text'] for r in entry):
+                raise TaskIncomplete('观点提交后未回到普通文章页，保留现场，不重复发表')
+        # Article links and channel links can point back to each other in the
+        # WebView history. Reuse the existing verification-aware home recovery.
+        self.send_log('观点提交后已确认普通内容页，恢复首页并核分，不沿文章返回栈反复操作')
+        self._go_home()
 
     def publish_comment(self, before=None):
         before = before or self.read_learning_score(['发表观点'])['发表观点']

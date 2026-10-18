@@ -68,20 +68,13 @@ class ScrolledCommentFeedTests(unittest.TestCase):
         article=json.loads((FIXTURES/'article.json').read_text('utf-8'))
         self.assertFalse(value._comment_life_feed(article))
 
-    def test_return_from_article_waits_for_scrolled_life_feed_before_channel_menu(self):
+    def test_return_from_submitted_article_does_not_follow_channel_history(self):
         value=self.value();value._comment_life_selected=True
         value._screen_records=Mock(return_value=[])
         value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[25,1220,150,30])])
-        def wait(predicate,*args,**kwargs):
-            self.assertTrue(predicate(COLLAPSED))
-            return COLLAPSED
-        value._comment_wait=Mock(side_effect=wait)
-        value._comment_channel_menu=Mock(return_value=[dict(text='推荐',box=[20,300,80,35])])
-        value._comment_click=Mock();value._wait_home_ready=Mock()
+        value._go_home=Mock();value._comment_click=Mock();value._comment_channel_menu=Mock()
         value._comment_restore_home()
-        value._comment_channel_menu.assert_called_once_with(COLLAPSED)
-        self.assertEqual(value._comment_click.call_count,2)
-        self.assertEqual(value._comment_click.call_args_list[0].args[0]['text'],'文章返回')
-        self.assertEqual(value._comment_click.call_args_list[1].args[0]['text'],'推荐')
+        value._go_home.assert_called_once()
+        value._comment_click.assert_not_called();value._comment_channel_menu.assert_not_called()
 
 if __name__=='__main__':unittest.main()

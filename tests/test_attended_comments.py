@@ -66,21 +66,16 @@ class AttendedJournalTests(unittest.TestCase):
 
 
 class AttendedDispatchTests(unittest.TestCase):
-    def test_return_uses_article_arrow_once_then_confirmed_channel(self):
+    def test_return_from_article_reuses_guarded_home_recovery_without_history_clicks(self):
         value=existing.worker();value._guard_verification=Mock()
         value._screen_records=Mock(return_value=[])
         value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[30,1220,200,30])])
-        value._comment_click=Mock();value._comment_life_feed=Mock(return_value=True)
-        records=[dict(text='生活百科',box=[20,180,100,30])]
-        value._comment_wait=Mock(side_effect=lambda predicate: records if predicate(records) else self.fail('Return target was not recognized'))
-        value._comment_channel_menu=Mock(return_value=records)
-        value._comment_label=Mock(return_value=dict(text='推荐',box=[10,200,100,30]))
-        value._wait_home_ready=Mock()
+        value._comment_click=Mock();value._go_home=Mock();value._comment_wait=Mock()
         value._comment_restore_home()
-        self.assertEqual(value._comment_click.call_args_list[0].args[0]['text'],'文章返回')
-        self.assertEqual(value._comment_click.call_count,2)
+        value._go_home.assert_called_once()
+        value._comment_click.assert_not_called()
+        value._comment_wait.assert_not_called()
         value.tasker.post_task.assert_not_called()
-        value._wait_home_ready.assert_called_once()
 
     def test_return_already_at_home_does_not_open_channel_menu(self):
         value=existing.worker();value._guard_verification=Mock()
@@ -108,25 +103,22 @@ class AttendedDispatchTests(unittest.TestCase):
         value.tasker.controller.cached_image[:]=255
         self.assertFalse(value._comment_native_life_page(records))
 
-    def test_recovery_already_in_native_channel_returns_without_an_article_click(self):
+    def test_recovery_already_in_native_channel_avoids_its_link_back_to_the_article(self):
         value=existing.worker();records,image=self.native_page()
         value.tasker.controller.cached_image=image
         value._screen_records=Mock(return_value=records);value._guard_verification=Mock()
-        value._comment_click=Mock();value._wait_home_ready=Mock()
-        value._comment_channel_menu=Mock()
+        value._comment_click=Mock();value._go_home=Mock();value._comment_ocr=Mock()
         value._comment_restore_home()
-        self.assertEqual(value._comment_click.call_args.args[0]['text'],'科普频道返回')
-        value._comment_channel_menu.assert_not_called()
-        value._wait_home_ready.assert_called_once()
+        value._go_home.assert_called_once()
+        value._comment_click.assert_not_called()
+        value._comment_ocr.assert_not_called()
 
-    def test_article_return_accepts_native_channel_instead_of_waiting_for_home_feed(self):
-        value=existing.worker();records,image=self.native_page()
-        value.tasker.controller.cached_image=image;value._screen_records=Mock(return_value=[])
-        value._guard_verification=Mock();value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[30,1220,200,30])])
-        value._comment_click=Mock();value._wait_home_ready=Mock()
-        value._comment_wait=Mock(side_effect=lambda predicate: records if predicate(records) else self.fail('Native page was not accepted'))
-        value._comment_restore_home()
-        self.assertEqual([c.args[0]['text'] for c in value._comment_click.call_args_list],['文章返回','科普频道返回'])
+    def test_unknown_page_does_not_restart_or_publish(self):
+        value=existing.worker();value._screen_records=Mock(return_value=[])
+        value._guard_verification=Mock();value._comment_ocr=Mock(return_value=[])
+        value._go_home=Mock();value._comment_click=Mock()
+        with self.assertRaises(TaskIncomplete):value._comment_restore_home()
+        value._go_home.assert_not_called();value._comment_click.assert_not_called()
 
     def test_real_verification_prevents_article_return_click(self):
         value=existing.worker();value._comment_click=Mock()
