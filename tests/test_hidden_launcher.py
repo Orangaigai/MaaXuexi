@@ -20,10 +20,11 @@ spec.loader.exec_module(launcher)
 class HiddenLauncherTests(unittest.TestCase):
     def test_pythonw_entry_and_powershell_child_allocate_no_console(self):
         with tempfile.TemporaryDirectory(prefix='maa hidden 中文 ') as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             (root/'scripts').mkdir()
             shutil.copyfile(SOURCE, root/'scripts/Launch-Hidden.py')
             (root/'scripts/Start-MaaXuexi.ps1').write_text('''
+[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 Add-Type 'using System; using System.Runtime.InteropServices; public class MaaConsoleProbe { [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow(); }'
 @{console_window=[MaaConsoleProbe]::GetConsoleWindow().ToInt64();cwd=(Get-Location).Path} | ConvertTo-Json -Compress
 exit 0
@@ -36,7 +37,7 @@ exit 0
             log = next((root/'logs').glob('launcher-*.log')).read_text('utf-8-sig')
             data = json.loads(next(line for line in log.splitlines() if line.startswith('{')))
             self.assertEqual(data['console_window'], 0)
-            self.assertEqual(Path(data['cwd']), root)
+            self.assertEqual(Path(data['cwd']).resolve(), root)
             self.assertIn('Launcher exit code: 0', log)
 
     def test_daily_failure_exit_code_is_preserved_and_logged(self):

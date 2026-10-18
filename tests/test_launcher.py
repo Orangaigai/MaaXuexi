@@ -113,7 +113,7 @@ try { Wait-BackendPortFree -TimeoutMilliseconds 0 } catch { $failed=($_.Exceptio
     @unittest.skipUnless(os.name == 'nt', 'Windows PowerShell regression')
     def test_stop_waits_for_owned_process_and_preserves_mismatched_record(self):
         with tempfile.TemporaryDirectory(prefix='maa-stop-test-') as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             (root/'scripts').mkdir(); (root/'logs').mkdir()
             source = Path(__file__).resolve().parents[1]/'scripts/Stop-MaaXuexi.ps1'
             shutil.copyfile(source,root/'scripts/Stop-MaaXuexi.ps1')
