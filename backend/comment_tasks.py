@@ -9,9 +9,10 @@ from datetime import datetime
 from pathlib import Path
 
 from daily_flow import verification_visible
+from four_player import race_network_error
 from home_navigation import home_ready
 from comment_drafts import ContextCommentDrafts, valid_comment_text, validate_draft, valid_article
-from task_support import TaskIncomplete, TaskUnavailable, is_complete
+from task_support import HumanRequired, TaskIncomplete, TaskUnavailable, is_complete
 
 COMMENT_MODE = 'article_context_v1'
 COMMENT_SCOPE = '科普中国/生活百科'
@@ -188,7 +189,7 @@ class CommentTasks:
 
     def _comment_ocr(self, name, roi):
         self._check_active()
-        self._guard_verification()
+        self._guard_verification(resume_when=self._comment_resume_ready)
         result = self.tasker.post_task(name, {name: {
             'recognition': 'OCR', 'roi': roi, 'action': 'DoNothing',
             'timeout': 1200, 'pre_delay': 0, 'post_delay': 0,
@@ -200,7 +201,7 @@ class CommentTasks:
 
     def _comment_click(self, row):
         self._check_active()
-        self._guard_verification()
+        self._guard_verification(resume_when=self._comment_resume_ready)
         if not self._app_in_foreground():
             raise TaskIncomplete('发表观点时应用不在前台')
         x, y, width, height = row['box']
@@ -208,12 +209,47 @@ class CommentTasks:
             raise TaskIncomplete('发表观点触控未成功')
         self._sleep(.5)
 
+    def _comment_retry_network(self, records):
+        """Retry the failed page once, never the comment submission or a puzzle."""
+        if not race_network_error(records):
+            return False
+        self._owner_resume_stable = 0
+        now = time.monotonic()
+        last = getattr(self, '_comment_network_retry_at', None)
+        if last is not None and now-last < 4:
+            return True
+        if getattr(self, '_comment_network_retries', 0):
+            raise HumanRequired('观点页面重试1次仍报告网络错误，保留现场，不重复发布')
+        buttons = [row for row in records if row['text'].strip() == '重试' and row['box'][1] >= 500]
+        if len(buttons) != 1 or not self._app_in_foreground():
+            raise HumanRequired('观点网络错误页的重试按钮未确认，保留现场，不猜测点击')
+        self._check_active()
+        self._comment_network_retries = 1
+        self._comment_network_retry_at = now
+        x, y, width, height = buttons[0]['box']
+        if not self.tasker.controller.post_click(round(x+width/2), round(y+height/2)).wait().succeeded:
+            raise HumanRequired('观点网络错误页重试触控未成功，保留现场')
+        report = getattr(self, 'run_report', None)
+        if report is not None:
+            report.task('发表观点', network_retries=1)
+        self.send_log('观点：已点击当前网络错误页的重试（1/1）；若恢复访问验证仍需本人完成')
+        return True
+
+    def _comment_resume_ready(self):
+        records = self._screen_records()
+        if self._comment_retry_network(records):
+            return False
+        return self._owner_resume_ready(records=records)
+
     def _comment_wait(self, predicate, timeout=20, required=True):
         deadline = time.monotonic()+timeout
         paused = getattr(self, '_paused_seconds', 0)
         while time.monotonic() < deadline:
             records = self._screen_records()
-            self._guard_verification(records)
+            if self._comment_retry_network(records):
+                self._sleep(.5)
+                continue
+            self._guard_verification(records, resume_when=self._comment_resume_ready)
             if verification_visible(records):
                 records = self._screen_records()
             total = getattr(self, '_paused_seconds', 0)
@@ -255,7 +291,7 @@ class CommentTasks:
         self._sleep(1)
         for page in range(3):
             records = self._screen_records()
-            self._guard_verification(records)
+            self._guard_verification(records, resume_when=self._comment_resume_ready)
             if not self._comment_life_feed(records):
                 raise TaskIncomplete('未确认科普中国生活百科列表，未选择其他文章')
             boxes, kinds = self.detect()
@@ -330,7 +366,7 @@ class CommentTasks:
         return comment_draft_ready(records, expected_text)
 
     def _comment_restore_home(self):
-        self._guard_verification()
+        self._guard_verification(resume_when=self._comment_resume_ready)
         records = self._screen_records()
         if home_ready(records):
             self._wait_home_ready(timeout=20)
@@ -361,6 +397,8 @@ class CommentTasks:
             raise TaskIncomplete('今天已有发表尝试记录，未重复发送；请查看积分与评论结果')
         if owner_retry:
             self.send_log('发表观点：本人手动发起补验，保留先前记录；本轮只提交一次，满分即停止')
+        self._comment_network_retries = 0
+        self._comment_network_retry_at = None
         self.send_log('发表观点：科普生活正文短评、规则检查及模型复核；无人值守每天一次尝试')
         prepared = self._prepare_comment_draft()
         self._check_active()

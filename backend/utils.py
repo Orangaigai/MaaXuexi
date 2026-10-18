@@ -382,6 +382,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                     try:
                         if resume_when():
                             self.pause_flag = False
+                    except HumanRequired:
+                        raise
                     except (TaskIncomplete, OSError):
                         pass
                     next_probe = time.monotonic() + 1
@@ -711,23 +713,23 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         # Detection only. Never click, infer, or submit a verification challenge.
         return verification_visible(self._screen_records() if records is None else records)
 
-    def _guard_verification(self, records=None):
+    def _guard_verification(self, records=None, resume_when=None):
         for _ in range(3):
             self._check_active()
             if not self._captcha_present(records):
                 return
-            self._wait_for_owner("平台访问验证：请在模拟器内本人完成")
+            self._wait_for_owner("平台访问验证：请在模拟器内本人完成", resume_when=resume_when)
             records = None
         raise TaskIncomplete("平台验证仍未完成，停止当前操作")
 
-    def _wait_for_owner(self, reason="平台访问验证：请在模拟器内本人完成"):
+    def _wait_for_owner(self, reason="平台访问验证：请在模拟器内本人完成", resume_when=None):
         self._owner_resume_stable = 0
-        self.pause(reason, resume_when=self._owner_resume_ready)
+        self.pause(reason, resume_when=resume_when or self._owner_resume_ready)
 
-    def _owner_resume_ready(self):
+    def _owner_resume_ready(self, records=None):
         """Observe a known app page after owner action; never interact with CAPTCHA."""
         from four_player import detect_fun_mode, race_finished, race_match_expired, race_network_error
-        records = self._screen_records()
+        records = self._screen_records() if records is None else records
         if self._captcha_present(records):
             self._owner_resume_stable = 0
             return False
