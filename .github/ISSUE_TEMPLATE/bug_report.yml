@@ -1,0 +1,33 @@
+name: 报告问题
+description: 提供可以复现的问题、版本和打码现场
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "请勿上传密钥、config、完整logs或模拟器登录数据。安全问题请先阅读SECURITY.md。"
+  - type: input
+    id: version
+    attributes:
+      label: 控制台版本或提交
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境
+      description: Windows、Python、MuMu和App版本；说明是否使用代理，不填写账号
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤及预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: 实际结果和打码截图
+      description: 若涉及验证，请说明是否本人操作且明确通过，以及随后出现的页面
+    validations:
+      required: true

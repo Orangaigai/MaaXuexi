@@ -1,94 +1,12 @@
-MaaXuexi local revision local-20261017.20 (article progress, strict click hints and complete-frame OCR)
+MaaXuexi derivative source
+
 Upstream: https://github.com/ravizhan/MaaXuexi
-Base version: v1.7.1
-Pinned upstream commit: ff6a0d5a811c5fc987a0c0ae77ea9abaf55fa073
-License: AGPL-3.0; original LICENSE retained at project root.
+Base: v1.7.1 / ff6a0d5a811c5fc987a0c0ae77ea9abaf55fa073
+License: AGPL-3.0; original LICENSE retained.
 
-Retained functions:
-- Candidate subscription module: one-account score checks, round-based SQLite cycle counts,
-  cleanup of owned new follows, no post-cleanup score revisit (owner-confirmed behavior).
-  Counts increment only after confirmed follow and cancellation. No per-account score history.
-  Subscription credit and batch cleanup were accepted in .13; historical counts and evidence remain recorded.
-  Live .4 subscription run d29a0bb6628f stopped on real platform validation with 0/2.
-  .5 uses the observed My/Add route and resolves failed pending intents without incrementing counts.
-  .6 enables the six-task default plan, excludes owner pause time from subscription transitions,
-  continues after a confirmed saved follow with no points, and resumes owned subscription details.
-  .7 isolates the home My button because full-screen OCR merged it with the adjacent AI icon.
-  .8 waits for the category rail and confirms its active marker before reading candidate accounts.
-  .9 distinguishes cancellation confirmation buttons from titles and supports direct unfollow transitions.
-- Score checking, articles, videos, single/double/four-player fun quiz and daily quiz.
-- Choice, fill-in and click-to-fill daily questions; hint OCR and official DeepSeek.
-- Hidden launcher, one control page, local encrypted key, manual start/stop/continue.
-- Daily 09:00 Windows task supports the seven-task order including local channel and subscriptions.
-- Local-channel handler follows the current native region and regional learning-platform icon,
-  then checks the real 1-point card. Flow ideas were reviewed in LearnChinaHelper and AiQiangGUO;
-  old scripts were not installed or executed. Candidate run ca4ebedf6d8a earned 0/1 to 1/1.
-  Current control, task API, launcher and plan example include the new task; 395 offline checks pass.
-- Score verification, full-score skipping, bounded network retry and owner-only verification.
+Current provenance: ../ACKNOWLEDGEMENTS.md
+Module guide: ../docs/architecture.md
+Release notes: ../CHANGELOG.md
+Runtime version: task_support.py
 
-Module responsibilities:
-screen_reading.py: fresh captures, exact-frame OCR reuse, blank-edge-only ROI trimming.
-question_visual.py: conservative non-text visual evidence and per-question picture freshness.
-utils.py: worker state, task execution, device connection and daily question preparation.
-content_tasks.py: article/video execution and actual playback progress.
-score_navigation.py: fresh first score entry, list navigation and score reading.
-home_navigation.py: recognized home navigation and startup waits.
-daily_flow.py: final submission, verification pause, result recognition and return.
-daily_hints.py: strict hint-to-option matching.
-fun_challenge.py / four_player.py: current daily fun mode, answers, settlement and return.
-answer_client.py: bounded official DeepSeek requests and answer contracts.
-key_store.py / provider_support.py: Windows DPAPI key storage and provider validation.
-task_support.py: task order, score parsing and durable results.
-webui.py: loopback-only task and configuration API.
-
-Cleanup revision:
-Move 13 existing handlers into content and score modules while preserving their interfaces.
-Remove unused imports, obsolete acceptance state and duplicate existing-round recovery.
-Refresh the first score page of each run; a real midnight screenshot still showed yesterday's full scores.
-Retain the daily direct-result fix: the real fifth-answer Click can submit the round before verification;
-accept only five questions plus program submission, observed result and automatic return.
-The short-press recovery branch remains an existing, bounded candidate and was not exercised in that successful direct-result test.
-Runtime, recognition models, all quiz modes, saved task plan and key remain intact.
-
-Current checks and actual live scope: docs/收尾检查与验收.md and config/verification.json.
-Historical source ledger, reports and screenshots: docs/历史记录位置.txt.
-Verification remains owner-only; scheduled runs observe owner action for up to 600 seconds, then end needs_human on timeout.
-
-2026-10-17 subscription cleanup: use the observed My subscriptions right-hand 已订阅 button and bottom-sheet 取消订阅 action directly. Cancel the top visible journalled account, stay on the list for subsequent accounts, and reload once for the whole batch before counting completed follow/unfollow operations. Remove publisher-detail navigation and its unused owner-resume recognizer. Live scoring reached 2/2 in d163e717e93e; six direct-list cancellations completed in 525f49d870c1. Batch acceptance is recorded separately in docs/订阅流程与验收.md. Isolate the right-hand list button OCR when merged with descriptions; recognize cancelled rows that remain temporarily visible with a 订阅 button. 383 offline checks pass.
-
-Live follow-up: support observed video_big cards, keep verified playback on missing progress, allow recognized already-opened videos when points remain, reset old match error flags, accept native Click result list coordinates. Offline checks: 327. Live results remain separately documented.
-
-2026-10-17 verification messages: unattended runs explicitly end and require a new manual start; only a live manual observer promises automatic continuation. Show the detected fun mode and restart action on the control page. 329 offline checks pass; no new match was started.
-
-2026-10-17 one-start continuation: observe recognized pages after owner verification/login across navigation, question transitions and content recovery. Scheduled pauses retain the same worker for at most 600 seconds; the daily launcher keeps monitoring and excludes pause duration from its active limit. No automatic CAPTCHA solving or extra full-task replay. 337 offline checks pass.
-
-2026-10-17 selected completion: recognize source/publisher and label-free selected-option layout only with a pending submission; real verification overrides it. 342 offline checks pass. Live .2 stalled here and is not accepted.
-
-.15: Owner-approved fixed comment only, science/life scope, one durable send reservation per day.
-413 offline checks passed. Full draft preparation and return verified; public send and credit pending owner approval.
-Exercise excluded. Saved seven-task daily plan remains active; comments are not enabled by default.
-
-.16: Owner rejected fixed text. Contextual science/life drafts use DeepSeek generation, literal source evidence, local constraints and model review.
-429 offline tests passed. Live route, generation, editor input and return accepted; sending and credit are not accepted or enabled.
-
-.17: Owner approved contextual daily publication. .16 run 0d0b739c2be1 posted once and verified 0/1 -> 1/1 after the verification page cleared.
-Eight-task daily plan enabled. Article attempt history avoids repeated comments on the same article; 431 offline tests passed.
-
-.18: Plainer wording, source-gated AI abbreviation, literal evidence plus semantic review rather than character overlap.
-432 offline tests passed. Two discussions inspected read-only; no other comments copied and no extra comment posted.
-
-.19: Native score inventory rechecked: 1/12/12/1/10/2/1/5 daily caps (44 total).
-Move fun quiz before subscriptions/comments within the occasional-challenge group; daily quiz remains last.
-Groups reflect local observations and upstream emulator reports, not mandatory/zero verification guarantees.
-Continue bounded Android boot readiness checks after transient ADB connect/getprop timeouts.
-
-.20: Bounded article batches followed by real scores; strict ordered hint segmentation for click-fill in normal mode.
-Fresh-image native OCR, exact complete-frame reuse, blank-border-only crops; full screenshot for visually indicated questions.
-454 offline regressions, 13 native OCR replay images and one real article route accepted.
-Full-score eight-task run 2455f603017b completed; no new quiz accuracy or new points claimed.
-
-.21: Preserve meaningful symbols/units in strict choice-hint comparison; do not fall through to legacy fuzzy choices.
-Single-input blank context can align the complete question sentence with the hint; ambiguous or independent fields retain existing fallback.
-Bounded local timings and daily key-frame replay; screenshot/OCR/model/owner waiting tracked separately, no device input in replay.
-474 offline tests passed, four archival stages recognized with native OCR and replayed; historical hint paragraph extracted.
-Reading-history expansion is excluded by owner. Direct-control extraction remains a feasibility check, no new agent installed.
+Machine-specific configuration, keys, databases and acceptance logs are not source files.

@@ -1,0 +1,17 @@
+name: 改进建议
+description: 说明使用场景、现有困难和希望得到的结果
+title: "[建议] "
+body:
+  - type: textarea
+    id: scenario
+    attributes:
+      label: 使用场景和困难
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: 希望的行为
+      description: 可以附打码示意图或公开参考链接
+    validations:
+      required: true

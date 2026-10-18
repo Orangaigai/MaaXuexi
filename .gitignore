@@ -3,7 +3,7 @@
 /debug/
 /config/*
 !/config/source-manifest.json
-!/config/local-task-plan.example.json
+!/config/*.example.json
 **/__pycache__/
 *.py[cod]
 *.sqlite3*
@@ -12,3 +12,12 @@
 *.log
 .env
 .env.*
+*.pem
+*.p12
+*.pfx
+/.pytest_cache/
+/.ruff_cache/
+/.coverage
+/htmlcov/
+/dist/
+/build/

@@ -114,7 +114,7 @@ class LocalChannelTests(unittest.TestCase):
         names=ast.literal_eval(re.search(r'const names=(\[[^;]+\]);',script).group(1))
         self.assertEqual(names,list(task_support.ALIASES))
         example=json.loads((root/'config/local-task-plan.example.json').read_text('utf-8'))
-        self.assertEqual(example['tasklist'],[name for name in names if name!='发表观点'])
+        self.assertEqual(example['tasklist'],['登录','选读文章','视听学习','本地频道'])
         self.assertEqual(webui.TaskModel(tasklist=['本地频道']).tasklist,['本地频道'])
 
 if __name__=='__main__':unittest.main()
