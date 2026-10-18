@@ -1,8 +1,9 @@
-"""One contextual short comment per day under an owner-approved scope and policy."""
+"""Contextual comments: one unattended attempt; owner-started retries are journaled."""
 import json
 import re
 import sqlite3
 import time
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -26,7 +27,8 @@ def comment_policy():
     enabled = (isinstance(value, dict) and value.get('enabled') is True
                and value.get('mode') == COMMENT_MODE and value.get('scope') == COMMENT_SCOPE)
     return dict(enabled=enabled, mode=COMMENT_MODE, scope=COMMENT_SCOPE, daily_limit=1,
-                min_chars=8, max_chars=20, model_review=True)
+                min_chars=8, max_chars=20, model_review=True,
+                unattended_attempt_limit=1, owner_started_retry=True)
 
 
 class CommentJournal:
@@ -44,33 +46,61 @@ class CommentJournal:
                 db.execute('CREATE TABLE IF NOT EXISTS comments '
                            '(day TEXT PRIMARY KEY, article TEXT NOT NULL, text TEXT NOT NULL, '
                            'state TEXT NOT NULL, created_at TEXT NOT NULL)')
+                db.execute('CREATE TABLE IF NOT EXISTS comment_attempts '
+                           '(attempt_id TEXT PRIMARY KEY, day TEXT NOT NULL, article TEXT NOT NULL, '
+                           'text TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL)')
+                db.execute('CREATE INDEX IF NOT EXISTS comment_attempts_day ON comment_attempts(day)')
+                # Keep the original table and every original row. Backfill once
+                # per day; all later attempts are append-only separate records.
+                db.execute('INSERT OR IGNORE INTO comment_attempts '
+                           "SELECT 'legacy:'||day, day, article, text, state, created_at FROM comments "
+                           'WHERE NOT EXISTS (SELECT 1 FROM comment_attempts a WHERE a.day=comments.day)')
                 yield db
         finally:
             db.close()
 
     def today(self):
         with self._connect() as db:
-            row = db.execute('SELECT * FROM comments WHERE day=?',
+            row = db.execute('SELECT * FROM comment_attempts WHERE day=? ORDER BY rowid DESC LIMIT 1',
                              (datetime.now().date().isoformat(),)).fetchone()
             return dict(row) if row else None
 
-    def reserve(self, article, text):
+    def reserve(self, article, text, *, owner_retry=False, attempt_id=None):
         if not valid_comment_text(text):
             raise TaskIncomplete('观点内容未满足短评规则，未占用发布额度')
         with self._connect() as db:
-            result = db.execute('INSERT OR IGNORE INTO comments VALUES(?,?,?,?,?)',
-                (datetime.now().date().isoformat(), article, text, 'attempted',
-                 datetime.now().astimezone().isoformat(timespec='seconds')))
+            day = datetime.now().date().isoformat()
+            previous = db.execute('SELECT state FROM comment_attempts WHERE day=?', (day,)).fetchall()
+            if previous and (not owner_retry or not attempt_id or any(r['state']=='credited' for r in previous)):
+                return False
+            attempt_id = attempt_id or uuid.uuid4().hex
+            stamp = datetime.now().astimezone().isoformat(timespec='seconds')
+            result = db.execute('INSERT OR IGNORE INTO comment_attempts VALUES(?,?,?,?,?,?)',
+                (attempt_id, day, article, text, 'attempted', stamp))
+            if result.rowcount == 1:
+                db.execute('INSERT OR IGNORE INTO comments VALUES(?,?,?,?,?)',
+                           (day,article,text,'attempted',stamp))
+                self._reserved_id = attempt_id
             return result.rowcount == 1
 
     def credited(self):
         with self._connect() as db:
-            db.execute('UPDATE comments SET state=? WHERE day=?',
-                       ('credited', datetime.now().date().isoformat()))
+            attempt_id = getattr(self, '_reserved_id', None)
+            if attempt_id is None:
+                rows = db.execute('SELECT attempt_id FROM comment_attempts WHERE day=?',
+                                  (datetime.now().date().isoformat(),)).fetchall()
+                if len(rows) != 1:
+                    raise TaskIncomplete('未找到唯一的本轮发表记录，未修改历史记录')
+                attempt_id = rows[0]['attempt_id']
+            db.execute('UPDATE comment_attempts SET state=? WHERE attempt_id=?', ('credited',attempt_id))
+            db.execute('UPDATE comments SET state=? WHERE day=? AND article='
+                       '(SELECT article FROM comment_attempts WHERE attempt_id=?) AND text='
+                       '(SELECT text FROM comment_attempts WHERE attempt_id=?)',
+                       ('credited',datetime.now().date().isoformat(),attempt_id,attempt_id))
 
     def used_articles(self):
         with self._connect() as db:
-            return [r['article'] for r in db.execute('SELECT DISTINCT article FROM comments')]
+            return [r['article'] for r in db.execute('SELECT DISTINCT article FROM comment_attempts')]
 
 
 def article_title_key(text):
@@ -306,9 +336,15 @@ class CommentTasks:
         if not comment_policy()['enabled']:
             raise TaskUnavailable('按正文生成规则及每日发表范围尚未获本人确认，未发布')
         journal = CommentJournal()
-        if journal.today():
+        previous = journal.today()
+        report = getattr(self, 'run_report', None)
+        run_id = report.snapshot().get('run_id') if report is not None else None
+        owner_retry = bool(previous and not getattr(self, 'unattended', True) and isinstance(run_id,str) and run_id)
+        if previous and (not owner_retry or previous['state']=='credited'):
             raise TaskIncomplete('今天已有发表尝试记录，未重复发送；请查看积分与评论结果')
-        self.send_log('发表观点：科普生活正文短评、规则检查及模型复核，每天最多一条')
+        if owner_retry:
+            self.send_log('发表观点：本人手动发起补验，保留先前记录；本轮只提交一次，满分即停止')
+        self.send_log('发表观点：科普生活正文短评、规则检查及模型复核；无人值守每天一次尝试')
         prepared = self._prepare_comment_draft()
         self._check_active()
         article, draft = prepared['article'], prepared['draft']
@@ -316,7 +352,7 @@ class CommentTasks:
         button = self._comment_publish_target(draft['comment'])
         if valid is None or button is None or not comment_policy()['enabled']:
             raise TaskIncomplete('发布前短评或授权核对失败，未点击发布')
-        if not journal.reserve(article['title'], draft['comment']):
+        if not journal.reserve(article['title'], draft['comment'], owner_retry=owner_retry, attempt_id=run_id):
             raise TaskIncomplete('今天已有发表尝试，未重复发送')
         # The durable reservation deliberately remains even if the click times out.
         self._comment_click(button)
