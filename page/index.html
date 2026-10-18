@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>MaaXuexi · 任务控制台</title>
-  <link rel="stylesheet" href="/assets/console.css?v=local-20261018.27">
+  <link rel="stylesheet" href="/assets/console.css?v=local-20261018.28">
 </head>
 <body>
 <main>
@@ -29,10 +29,19 @@
   <section class="card task-card" aria-labelledby="taskHeading">
     <div class="section-heading"><h2 id="taskHeading"><span class="step-number" aria-hidden="true">1</span>任务清单</h2><span id="taskEditState" class="schedule-edit">读取中</span></div>
     <p class="section-description">选择本次任务；保存后，下次会沿用这份清单。</p>
-    <div id="choices" class="task-grid" role="group" aria-labelledby="taskHeading"></div>
+    <div id="choices" class="task-grid" role="group" aria-labelledby="taskHeading">
+      <section class="task-group" aria-labelledby="basicTaskHeading">
+        <div class="task-group-heading"><h3 id="basicTaskHeading">基础任务</h3><span>优先执行</span></div>
+        <div id="basicChoices" class="task-items"></div>
+      </section>
+      <section class="task-group" aria-labelledby="verificationTaskHeading">
+        <div class="task-group-heading"><h3 id="verificationTaskHeading" class="verification-tag">可能需本人验证</h3><span>随后执行</span></div>
+        <div id="verificationChoices" class="task-items"></div>
+      </section>
+    </div>
     <div class="task-actions"><button id="save" class="accent" disabled>保存所选任务</button><button id="saveBase" class="quiet" disabled title="保存登录、选读文章、视听学习、本地频道四项">保存基础任务</button><button id="start" class="primary start-button" disabled>立即执行</button></div>
     <p id="actionMessage" class="feedback" role="status" aria-live="polite"></p>
-    <aside class="verification-note" aria-label="人工验证提示"><p><strong>人工验证</strong>带标记的任务可能需要本人验证，会在基础任务之后执行。验证通过后自动继续；任务中断时，可点“继续执行”补做。</p></aside>
+    <aside class="verification-note" aria-label="人工验证提示"><p><strong>人工验证</strong>遇到验证时，请在模拟器内本人完成，程序会自动继续；任务中断时，可点“继续执行”补做。</p></aside>
   </section>
   <section class="card execution-card" aria-label="执行方式设置">
     <fieldset class="execution-choices">

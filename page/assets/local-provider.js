@@ -15,10 +15,8 @@
     label.className='task-option';input.type='checkbox';input.disabled=true;
     const copy=document.createElement('span'),title=document.createElement('span');
     copy.className='task-copy';title.textContent=name;copy.append(title);
-    if(verificationTasks.has(name)){
-      const badge=document.createElement('span');badge.className='verification-tag';badge.textContent='可能需验证';copy.append(badge);
-    }
-    label.append(input,copy);$('choices').append(label);inputs.set(name,input);
+    label.append(input,copy);
+    $(verificationTasks.has(name)?'verificationChoices':'basicChoices').append(label);inputs.set(name,input);
     input.addEventListener('change',renderSavedState);
   }
   async function request(path,body,signal){
