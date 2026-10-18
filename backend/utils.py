@@ -294,6 +294,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         )
         self.stop_flag = False
         self.pause_flag = False
+        self._manual_pause_requested = False
+        self._manual_hold = False
+        self._verification_wait_active = False
         self.unattended = False
         self.fast_answer = False
         self.last_task_error = None
@@ -344,9 +347,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             raise TaskIncomplete("模拟器连接在准备期间断开，请重新执行")
         progress("设备已就绪，正在启动应用并核对今日积分")
 
-    def pause(self, reason="需要本人查看模拟器并处理提示", resume_when=None):
+    def pause(self, reason="需要本人查看模拟器并处理提示", resume_when=None, *, manual=False):
         unattended = getattr(self, "unattended", False)
-        if unattended and resume_when is None:
+        if unattended and resume_when is None and not manual:
             self.pause_flag = False
             reason += "；本轮已结束，处理后请在网页重新执行"
             self.send_log("无人值守需要本人处理，本轮结束：" + reason)
@@ -356,19 +359,24 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             if unattended:
                 reason += "；最多等待10分钟，超时保留结果并通知"
         self.pause_flag = True
+        self._manual_hold = manual
+        self._verification_wait_active = resume_when is not None and not manual
         report = getattr(self, "run_report", None)
         if report:
-            report.update(status="paused", pause_reason=reason, resume_automatically=resume_when is not None)
+            report.update(status="paused", pause_reason=reason, resume_automatically=resume_when is not None,
+                          pause_kind='manual' if manual else 'verification')
         self.send_log("任务暂停：" + reason)
         try:
-            message = "请在 MuMu 本人处理验证或登录，完成后程序自动继续" if resume_when is not None else "任务暂停，请查看模拟器提示并在网页继续"
-            plyer.notification.notify(title="MaaXuexi", message=message, app_name="MaaXuexi", timeout=60)
+            if not manual:
+                message = "请在 MuMu 本人处理验证或登录，完成后程序自动继续" if resume_when is not None else "任务暂停，请查看模拟器提示并在网页继续"
+                plyer.notification.notify(title="MaaXuexi", message=message, app_name="MaaXuexi", timeout=60)
         except Exception as error:
             if report:
                 report.update(notification_error=type(error).__name__)
         started = time.monotonic()
         next_probe = started
-        wait_deadline = started + OWNER_WAIT_SECONDS if unattended else None
+        wait_deadline = started + OWNER_WAIT_SECONDS if unattended and not manual else None
+        last_tick = started
         try:
             while self.pause_flag and not self.stop_flag:
                 time.sleep(0.1)
@@ -376,6 +384,12 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                     break
                 self._check_active()
                 current = time.monotonic()
+                if getattr(self, '_manual_hold', False):
+                    if wait_deadline is not None:
+                        wait_deadline += current-last_tick
+                    last_tick = current
+                    continue
+                last_tick = current
                 if wait_deadline is not None and current >= wait_deadline:
                     raise HumanRequired("等待本人处理已满10分钟，本轮结束；已完成积分保留，处理后重新执行")
                 if resume_when is not None and current >= next_probe:
@@ -394,9 +408,11 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             if getattr(self, "_deadline", None):
                 self._deadline += paused_seconds
             self.pause_flag = False
+            self._manual_hold = False
+            self._verification_wait_active = False
         self._check_active()
         if report:
-            report.update(status="running", pause_reason=None, resume_automatically=False)
+            report.update(status="running", pause_reason=None, resume_automatically=False, pause_kind=None)
 
     @staticmethod
     def get_device():
@@ -689,6 +705,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
     def _check_active(self):
         if self.stop_flag:
             raise TaskCancelled()
+        if getattr(self, '_manual_pause_requested', False) and not self.pause_flag:
+            self._manual_pause_requested = False
+            self.pause('已由你暂停，点击控制台“继续执行”恢复', manual=True)
         if getattr(self, "_run_date", None) and datetime.now().date() != self._run_date:
             raise TaskIncomplete("The calendar day changed during the task")
         if not getattr(self, "pause_flag", False) and getattr(self, "_deadline", None) and time.monotonic() > self._deadline:
@@ -704,7 +723,25 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
     def request_stop(self):
         self.stop_flag = True
         self.pause_flag = False
+        self._manual_pause_requested = False
+        self._manual_hold = False
         self.tasker.post_stop()
+
+    def request_pause(self):
+        if self.pause_flag:
+            self._manual_hold = True
+        else:
+            self._manual_pause_requested = True
+
+    def request_continue(self):
+        self._manual_pause_requested = False
+        self._manual_hold = False
+        waiting = getattr(self, '_verification_wait_active', False)
+        # The owner observer must still confirm a normal page. A Continue click
+        # never dismisses or marks a verification challenge as completed.
+        if not waiting:
+            self.pause_flag = False
+        return waiting
 
     def _reset_home(self):
         return self._go_home()

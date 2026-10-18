@@ -128,7 +128,9 @@ def homepage():
 
 @app.get('/local/api-key')
 def api_key_page():
-    return HTMLResponse(Path('backend/api-key.html').read_text('utf-8'), headers={'Cache-Control':'no-store'})
+    html=Path('backend/api-key.html').read_text('utf-8')
+    html=html.replace('/assets/key-setup.js','/assets/key-setup.js?v='+VERSION)
+    return HTMLResponse(html,headers={'Cache-Control':'no-store'})
 
 @app.get('/api/settings')
 def get_settings():
@@ -283,6 +285,9 @@ def start_selected(tasks: TaskModel, daily_acceptance=False, verification_first=
         tasks.tasklist = list(dict.fromkeys(tasks.tasklist))
         worker.stop_flag = False
         worker.pause_flag = False
+        worker._manual_pause_requested = False
+        worker._manual_hold = False
+        worker._verification_wait_active = False
         worker.last_task_error = None
         app_state.current_tasks = tasks.tasklist
         args = (tasks, True) if daily_acceptance else (tasks,False,True) if verification_first else (tasks,)
@@ -301,20 +306,52 @@ def stop():
 @app.post('/api/continue')
 def resume():
     with app_state.lock:
-        if not task_running() or not app_state.worker.pause_flag:
-            return dict(status='failed', message='当前没有等待继续的任务。')
-        app_state.worker.pause_flag = False
-        return dict(status='success')
+        if task_running():
+            worker=app_state.worker
+            if not worker.pause_flag and not getattr(worker,'_manual_pause_requested',False):
+                return dict(status='failed',message='任务正在执行，无需重复继续。')
+            waiting=worker.request_continue()
+            return dict(status='success',waiting_for_owner=waiting,
+                message='请在模拟器完成验证；识别到正常页面后会继续。' if waiting else '已继续原任务。')
+        report=current_report()
+        tasks=continuation_tasks(report)
+        if not tasks:
+            return dict(status='failed',message='没有待继续的任务，请先选择任务并执行。')
+        return start_selected(TaskModel(tasklist=tasks))
+
+def current_report():
+    report=getattr(app_state.worker,'run_report',None)
+    value=report.snapshot() if report else read_report()
+    return value if isinstance(value,dict) else {}
+
+def continuation_tasks(report):
+    if report.get('status') not in ('stopped','partial','failed','needs_human','paused','running'):
+        return []
+    tasks=report.get('tasks',{})
+    return [name for name in ALIASES if name in tasks] if isinstance(tasks,dict) else []
+
+@app.post('/api/pause')
+def pause_tasks():
+    with app_state.lock:
+        if not task_running():
+            return dict(status='failed',message='当前没有正在执行的任务。')
+        app_state.worker.request_pause()
+        return dict(status='success',message='已请求暂停，当前操作结束后暂停。')
 
 @app.get('/api/status')
 def status():
-    report = getattr(app_state.worker, 'run_report', None)
+    report = current_report()
+    running = task_running()
+    paused = bool(app_state.worker and app_state.worker.pause_flag)
+    requested = bool(getattr(app_state.worker,'_manual_pause_requested',False))
     return dict(status='running', pid=os.getpid(), backend='deepseek-local',
-                local_version=VERSION, run_summary=report.snapshot() if report else read_report(),
-                task_running=task_running(), connected=bool(app_state.worker and app_state.worker.connection_alive()),
+                local_version=VERSION, run_summary=report,
+                task_running=running, connected=bool(app_state.worker and app_state.worker.connection_alive()),
                 current_tasks=app_state.current_tasks,
                 last_error=getattr(app_state.worker, 'last_task_error', None),
-                paused=bool(app_state.worker and app_state.worker.pause_flag),
+                paused=paused, pause_requested=requested,
+                manual_paused=paused and bool(getattr(app_state.worker,'_manual_hold',False)),
+                can_continue=(paused or requested) if running else bool(continuation_tasks(report)),
                 provider='deepseek', model=MODEL, api_key_configured=key_configured())
 
 @app.websocket('/api/ws')

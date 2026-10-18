@@ -44,8 +44,12 @@ def test_connection():
         if response is None:
             result = dict(status='failed', message='连接验证失败，请检查网络后重试。')
         elif response.status_code != 200:
+            reasons={401:'密钥无效，请核对或重新创建 API 密钥。',402:'API 余额不足，请在官方平台充值后重试。',
+                     429:'请求较频繁，请稍后再试。',500:'DeepSeek 服务暂不可用，请稍后再试。',
+                     502:'DeepSeek 服务暂不可用，请稍后再试。',503:'DeepSeek 服务繁忙，请稍后再试。',
+                     504:'DeepSeek 响应超时，请稍后再试。'}
             result = dict(status='failed', http_status=response.status_code,
-                          message=f'验证未通过（HTTP {response.status_code}），请核对密钥、余额及接口权限。')
+                          message=f'验证未通过（HTTP {response.status_code}）：'+reasons.get(response.status_code,'请核对密钥、余额及接口权限。'))
         else:
             answer = str(response.json()['choices'][0]['message']['content']).strip().strip(' .。')
             result = dict(status='success' if answer == 'B' else 'failed', image_input=answer == 'B',
