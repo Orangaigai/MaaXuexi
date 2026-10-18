@@ -162,6 +162,21 @@ def comment_article(records, *, require_body=True):
     return article if valid_article(article) else None
 
 
+def comment_posted(records, expected_text):
+    """Own visible comment is a continuation page, not proof of score credit."""
+    if not expected_text or verification_visible(records):
+        return False
+    texts = [r for r in records if re.sub(r'\s+', '', r['text']) == expected_text
+             and 250 <= r['box'][1] < 1120]
+    for row in texts:
+        y = row['box'][1]
+        delete = [r for r in records if r['text'].strip() == '删除' and y < r['box'][1] < y+130]
+        reply = [r for r in records if '回复' in r['text'] and y < r['box'][1] < y+130]
+        if len(delete) == 1 and reply:
+            return True
+    return False
+
+
 class CommentTasks:
     def _comment_native_life_page(self, records):
         headers=[r for r in records if r['text'].strip()=='科普中国' and 35<=r['box'][1]<110]

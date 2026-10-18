@@ -93,6 +93,29 @@ class AttendedJournalTests(unittest.TestCase):
 
 
 class AttendedDispatchTests(unittest.TestCase):
+    def posted_rows(self):
+        return [dict(text=COMMENT_TEXT,box=[85,1000,540,32]),
+                dict(text='刚刚·回复',box=[85,1060,140,32]),
+                dict(text='删除',box=[650,1060,55,32])]
+
+    def test_posted_own_comment_is_a_known_continuation_without_implying_credit(self):
+        rows=self.posted_rows()
+        self.assertTrue(comment_tasks.comment_posted(rows,COMMENT_TEXT))
+        self.assertFalse(comment_tasks.comment_posted(rows[:-1],COMMENT_TEXT))
+        self.assertFalse(comment_tasks.comment_posted(rows,'另一条没有发表的评论。'))
+
+    def test_verification_overlay_does_not_resume_from_underlying_comment(self):
+        rows=self.posted_rows()+[dict(text='访问验证',box=[200,100,180,40])]
+        self.assertFalse(comment_tasks.comment_posted(rows,COMMENT_TEXT))
+
+    def test_owner_wait_resumes_from_two_stable_own_comment_frames_without_input(self):
+        value=existing.worker();value._screen_records=Mock(return_value=self.posted_rows())
+        value._last_comment_draft=dict(draft=dict(comment=COMMENT_TEXT))
+        self.assertFalse(value._owner_resume_ready())
+        self.assertTrue(value._owner_resume_ready())
+        value.tasker.controller.post_click.assert_not_called()
+        value.tasker.controller.post_swipe.assert_not_called()
+
     def test_return_from_article_reuses_guarded_home_recovery_without_history_clicks(self):
         value=existing.worker();value._guard_verification=Mock()
         value._screen_records=Mock(return_value=[])

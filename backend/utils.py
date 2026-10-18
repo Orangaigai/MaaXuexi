@@ -37,7 +37,7 @@ from score_navigation import ScoreNavigation
 from subscription_tasks import SubscriptionTasks, subscription_scene
 from subscription_store import SubscriptionStore
 from local_channel import LocalChannelTasks
-from comment_tasks import CommentTasks, comment_article
+from comment_tasks import CommentTasks, comment_article, comment_posted
 
 
 os.makedirs("logs/maa", exist_ok=True)
@@ -739,7 +739,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                        and 130 <= row['box'][1] < 440 for row in records)
         content = any(row['text'].strip() in ('全屏观看', '听视频', '发表观点', '写评论', '评论')
                       and 680 <= row['box'][1] < 1280 for row in records)
-        if getattr(self, '_last_comment_draft', None) and comment_article(records) is not None:
+        comment = getattr(self, '_last_comment_draft', None)
+        if comment and (comment_article(records) is not None or
+                        comment_posted(records, comment.get('draft', {}).get('comment'))):
             content = True
         competition = (detect_fun_mode(records, True) in ('四人赛', '双人对战')
                        or race_finished(records) or race_match_expired(records)

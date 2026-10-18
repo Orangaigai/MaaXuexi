@@ -17,12 +17,26 @@ BODY = ('人工智能可以辅助自我理解，但不应替代真实的人际�
         '理解技术的作用与局限，有助于认识人与技术的关系。')
 ARTICLE = dict(scope='科普中国/生活百科',title='人工智能与日常交流',body=BODY)
 DRAFT = dict(skip=False,comment='人工智能不能代替真实的人际交往。',evidence='人工智能可以辅助自我理解，但不应替代真实的人际交往。')
-REVIEW = dict(grounded=True,topic_related=True,neutral=True,within_scope=True)
+REVIEW = dict(grounded=True,topic_related=True,neutral=True,within_scope=True,opinion=True,specific=True)
 
 def response(value,finish='stop'):
     return SimpleNamespace(status_code=200,json=lambda:dict(choices=[dict(finish_reason=finish,message=dict(content=json.dumps(value,ensure_ascii=False)))]))
 
 class DraftTests(unittest.TestCase):
+    def test_factual_but_summary_or_generic_comment_is_not_approved(self):
+        for changes in (dict(opinion=False),dict(specific=False),dict(opinion='true')):
+            resolver=Mock(model='offline-model')
+            resolver._post.side_effect=[response(DRAFT),response(dict(REVIEW,**changes))]
+            self.assertIsNone(ContextCommentDrafts(resolver).generate(ARTICLE))
+        old_review={key:value for key,value in REVIEW.items() if key not in ('opinion','specific')}
+        resolver=Mock(model='offline-model');resolver._post.side_effect=[response(DRAFT),response(old_review)]
+        self.assertIsNone(ContextCommentDrafts(resolver).generate(ARTICLE))
+
+    def test_generation_varies_wording_but_independent_review_remains_deterministic(self):
+        resolver=Mock(model='offline-model');resolver._post.side_effect=[response(DRAFT),response(REVIEW)]
+        self.assertIsNotNone(ContextCommentDrafts(resolver).generate(ARTICLE))
+        self.assertEqual([call.args[0]['temperature'] for call in resolver._post.call_args_list],[.4,0])
+
     def test_valid_comment_is_related_to_real_source_quote(self):
         self.assertTrue(valid_article(ARTICLE))
         self.assertEqual(validate_draft(DRAFT,ARTICLE)['comment'],DRAFT['comment'])
