@@ -17,20 +17,37 @@ BODY = ('人工智能可以辅助自我理解，但不应替代真实的人际�
         '理解技术的作用与局限，有助于认识人与技术的关系。')
 ARTICLE = dict(scope='科普中国/生活百科',title='人工智能与日常交流',body=BODY)
 DRAFT = dict(skip=False,comment='人工智能不能代替真实的人际交往。',evidence='人工智能可以辅助自我理解，但不应替代真实的人际交往。')
-REVIEW = dict(grounded=True,topic_related=True,neutral=True,within_scope=True,opinion=True,specific=True)
+REVIEW = dict(grounded=True,topic_related=True,neutral=True,within_scope=True,natural=True,specific=True)
 
 def response(value,finish='stop'):
     return SimpleNamespace(status_code=200,json=lambda:dict(choices=[dict(finish_reason=finish,message=dict(content=json.dumps(value,ensure_ascii=False)))]))
 
 class DraftTests(unittest.TestCase):
-    def test_factual_but_summary_or_generic_comment_is_not_approved(self):
-        for changes in (dict(opinion=False),dict(specific=False),dict(opinion='true')):
+    def test_unnatural_or_generic_comment_is_not_approved(self):
+        for changes in (dict(natural=False),dict(specific=False),dict(natural='true')):
             resolver=Mock(model='offline-model')
             resolver._post.side_effect=[response(DRAFT),response(dict(REVIEW,**changes))]
             self.assertIsNone(ContextCommentDrafts(resolver).generate(ARTICLE))
-        old_review={key:value for key,value in REVIEW.items() if key not in ('opinion','specific')}
+        old_review={key:value for key,value in REVIEW.items() if key not in ('natural','specific')}
         resolver=Mock(model='offline-model');resolver._post.side_effect=[response(DRAFT),response(old_review)]
         self.assertIsNone(ContextCommentDrafts(resolver).generate(ARTICLE))
+
+    def test_grounded_appreciation_does_not_require_an_original_opinion(self):
+        value=dict(DRAFT,comment='交流的边界讲得挺清楚，感谢科普。')
+        resolver=Mock(model='offline-model')
+        resolver._post.side_effect=[response(value),response(dict(REVIEW,opinion=False))]
+        result=ContextCommentDrafts(resolver).generate(ARTICLE)
+        self.assertEqual(result['comment'],value['comment'])
+        self.assertEqual(resolver._post.call_count,2)
+        self.assertEqual(result['evidence'],DRAFT['evidence'])
+
+    def test_standalone_generic_thanks_is_not_a_source_grounded_comment(self):
+        resolver=Mock(model='offline-model')
+        resolver._post.return_value=response(dict(DRAFT,comment='感谢分享。'))
+        drafts=ContextCommentDrafts(resolver)
+        self.assertIsNone(drafts.generate(ARTICLE))
+        self.assertEqual(drafts.last_error,'draft_failed_local_rules')
+        self.assertEqual(resolver._post.call_count,1)
 
     def test_generation_varies_wording_but_independent_review_remains_deterministic(self):
         resolver=Mock(model='offline-model');resolver._post.side_effect=[response(DRAFT),response(REVIEW)]
