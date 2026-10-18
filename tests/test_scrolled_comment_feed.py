@@ -70,6 +70,7 @@ class ScrolledCommentFeedTests(unittest.TestCase):
 
     def test_return_from_article_waits_for_scrolled_life_feed_before_channel_menu(self):
         value=self.value();value._comment_life_selected=True
+        value._screen_records=Mock(return_value=[])
         value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[25,1220,150,30])])
         def wait(predicate,*args,**kwargs):
             self.assertTrue(predicate(COLLAPSED))

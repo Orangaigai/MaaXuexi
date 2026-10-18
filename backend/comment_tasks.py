@@ -151,6 +151,18 @@ def comment_article(records):
 
 
 class CommentTasks:
+    def _comment_native_life_page(self, records):
+        headers=[r for r in records if r['text'].strip()=='科普中国' and 35<=r['box'][1]<110]
+        tabs={r['text'].strip() for r in records if 110<=r['box'][1]<180}
+        image=self.tasker.controller.cached_image
+        if len(headers)!=1 or not {'生活百科','科学求真','三农科普'}<=tabs or image is None or image.shape[:2]!=(1280,720):
+            return False
+        labels=[r['box'] for r in records if r['text'].strip()=='生活百科' and 110<=r['box'][1]<180]
+        if len(labels)!=1:return False
+        x,y,w,h=labels[0];pixels=image[y:y+h,x:x+w,:3].astype('int16')
+        red=(pixels[:,:,2]>160)&(pixels[:,:,2]>pixels[:,:,1]+50)&(pixels[:,:,2]>pixels[:,:,0]+50)
+        return int(red.sum())>=12
+
     def _comment_life_feed(self, records):
         """Vertical scrolling can hide the verified Life subchannel header."""
         confirmed = getattr(self, '_comment_life_selected', False)
@@ -316,6 +328,14 @@ class CommentTasks:
 
     def _comment_restore_home(self):
         self._guard_verification()
+        records=self._screen_records()
+        if home_ready(records):
+            self._wait_home_ready(timeout=20)
+            return
+        if self._comment_native_life_page(records):
+            self._comment_click(dict(text='科普频道返回',box=[12,44,58,60]))
+            self._wait_home_ready(timeout=20)
+            return
         # Only return from a recognized article, then restore the Recommended tab.
         entry = self._comment_ocr('观点返回文章核对', [20, 1200, 455, 75])
         if not any('发表观点' in r['text'] for r in entry):
@@ -323,7 +343,11 @@ class CommentTasks:
         # Android Back can merely clear the WebView/editor focus after posting.
         # The recognized article has its own visible top-left navigation button.
         self._comment_click(dict(text='文章返回', box=[12, 44, 58, 60]))
-        records = self._comment_wait(lambda rows: self._comment_life_feed(rows) or home_ready(rows))
+        records = self._comment_wait(lambda rows: self._comment_native_life_page(rows) or self._comment_life_feed(rows) or home_ready(rows))
+        if self._comment_native_life_page(records):
+            self._comment_click(dict(text='科普频道返回',box=[12,44,58,60]))
+            self._wait_home_ready(timeout=20)
+            return
         if home_ready(records):
             self._wait_home_ready(timeout=20)
             return

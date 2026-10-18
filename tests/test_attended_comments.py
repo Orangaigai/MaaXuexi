@@ -6,6 +6,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+import numpy as np
 from unittest.mock import Mock,patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
 import comment_tasks
@@ -67,6 +68,7 @@ class AttendedJournalTests(unittest.TestCase):
 class AttendedDispatchTests(unittest.TestCase):
     def test_return_uses_article_arrow_once_then_confirmed_channel(self):
         value=existing.worker();value._guard_verification=Mock()
+        value._screen_records=Mock(return_value=[])
         value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[30,1220,200,30])])
         value._comment_click=Mock();value._comment_life_feed=Mock(return_value=True)
         records=[dict(text='生活百科',box=[20,180,100,30])]
@@ -82,13 +84,49 @@ class AttendedDispatchTests(unittest.TestCase):
 
     def test_return_already_at_home_does_not_open_channel_menu(self):
         value=existing.worker();value._guard_verification=Mock()
+        value._screen_records=Mock(return_value=[])
         value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[30,1220,200,30])])
         value._comment_click=Mock();value._comment_life_feed=Mock(return_value=False)
         value._comment_wait=Mock(side_effect=lambda predicate: [] if predicate([]) else self.fail('Home was not accepted'))
         value._comment_channel_menu=Mock();value._wait_home_ready=Mock()
         with patch.object(comment_tasks,'home_ready',return_value=True):value._comment_restore_home()
-        value._comment_click.assert_called_once()
+        value._comment_click.assert_not_called()
         value._comment_channel_menu.assert_not_called()
+
+    def native_page(self):
+        records=[dict(text='科普中国',box=[312,58,115,35])]
+        records += [dict(text=text,box=[x,130,92,30]) for text,x in [('生活百科',174),('科学求真',302),('三农科普',430)]]
+        image=np.full((1280,720,3),255,np.uint8)
+        image[130:160,174:266]=[0,0,220]
+        return records,image
+
+    def test_native_channel_requires_header_tabs_and_selected_red_life_marker(self):
+        value=existing.worker();records,image=self.native_page()
+        value.tasker.controller.cached_image=image
+        self.assertTrue(value._comment_native_life_page(records))
+        self.assertFalse(value._comment_native_life_page(records[1:]))
+        value.tasker.controller.cached_image[:]=255
+        self.assertFalse(value._comment_native_life_page(records))
+
+    def test_recovery_already_in_native_channel_returns_without_an_article_click(self):
+        value=existing.worker();records,image=self.native_page()
+        value.tasker.controller.cached_image=image
+        value._screen_records=Mock(return_value=records);value._guard_verification=Mock()
+        value._comment_click=Mock();value._wait_home_ready=Mock()
+        value._comment_channel_menu=Mock()
+        value._comment_restore_home()
+        self.assertEqual(value._comment_click.call_args.args[0]['text'],'科普频道返回')
+        value._comment_channel_menu.assert_not_called()
+        value._wait_home_ready.assert_called_once()
+
+    def test_article_return_accepts_native_channel_instead_of_waiting_for_home_feed(self):
+        value=existing.worker();records,image=self.native_page()
+        value.tasker.controller.cached_image=image;value._screen_records=Mock(return_value=[])
+        value._guard_verification=Mock();value._comment_ocr=Mock(return_value=[dict(text='欢迎发表观点',box=[30,1220,200,30])])
+        value._comment_click=Mock();value._wait_home_ready=Mock()
+        value._comment_wait=Mock(side_effect=lambda predicate: records if predicate(records) else self.fail('Native page was not accepted'))
+        value._comment_restore_home()
+        self.assertEqual([c.args[0]['text'] for c in value._comment_click.call_args_list],['文章返回','科普频道返回'])
 
     def test_real_verification_prevents_article_return_click(self):
         value=existing.worker();value._comment_click=Mock()
