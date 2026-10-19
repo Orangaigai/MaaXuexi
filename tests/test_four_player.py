@@ -356,6 +356,69 @@ class FourPlayerTests(unittest.TestCase):
         self.assertFalse(race_finished([row('答对了',200,400)]))
         self.assertFalse(race_finished(ROOM))
 
+    def loss_settlement(self):
+        # Real OCR positions; participant names and personal results omitted.
+        path=Path(__file__).parent/'fixtures/four-player/settlement-20261019.json'
+        return json.loads(path.read_text('utf-8'))
+
+    def test_live_loss_settlement_with_continue_encouragement_is_finished(self):
+        records=self.loss_settlement()
+        self.assertTrue(race_finished(records))
+        for mode in ('四人赛','双人对战'):
+            self.assertIsNone(race_snapshot(records,np.zeros((1280,720,3),np.uint8),mode))
+
+    def test_loss_settlement_survives_missing_reward_ocr(self):
+        records=[r for r in self.loss_settlement() if not r['text'].startswith('积分+')]
+        self.assertTrue(race_finished(records))
+
+    def test_loss_settlement_survives_missing_outcome_ocr(self):
+        records=[r for r in self.loss_settlement() if r['text']!='继续加油！']
+        self.assertTrue(race_finished(records))
+
+    def test_positive_settlement_uses_same_rank_layout(self):
+        records=self.loss_settlement()
+        for r in records:
+            r['text']=r['text'].replace('继续加油！','恭喜获胜！').replace('积分+8','积分＋10')
+        self.assertTrue(race_finished(records))
+
+    def test_settlement_words_in_a_live_question_do_not_end_the_round(self):
+        records=question('“继续加油”表达什么情绪？')
+        records[3]['text']='A. 继续挑战'
+        records[4]['text']='B. 排名'
+        records[5]['text']='C. 正确数/总题数'
+        records[6]['text']='D. 总分'
+        self.assertFalse(race_finished(records))
+
+    def test_rank_layout_needs_result_controls_and_summary(self):
+        records=self.loss_settlement()
+        self.assertFalse(race_finished([r for r in records if r['text']!='继续挑战']))
+        self.assertFalse(race_finished([r for r in records if r['box'][1]>=550]))
+
+    def test_actual_loss_exits_instead_of_waiting_for_another_question(self):
+        records=self.loss_settlement()
+        value=self.race_worker([records,records])
+        value.four_player_answer(ROOM)
+        self.assertTrue(value._fun_metrics['round_finished'])
+        value._exit_competitive.assert_called_once_with(records)
+        value.ai_resolver.resolve_race_choice.assert_not_called()
+
+    def test_interrupted_actual_loss_resumes_return_without_matching_again(self):
+        value=worker();value._sleep=Mock()
+        value.run_report=task_support.RunReport(['趣味答题'])
+        value.tasker.controller.cached_image=np.zeros((1280,720,3),np.uint8)
+        profile=[row('我要答题',300,460,140),row('学习积分',100,460,140)]
+        value._fun_records=Mock(side_effect=[self.loss_settlement(),ROOM,profile])
+        previous=dict(tasks={'趣味答题':dict(metrics=dict(mode='四人赛',rounds_started=1,
+                           matched=True,round_finished=False,questions_clicked=1))})
+        value.four_player_answer=Mock()
+        self.assertTrue(value._resume_fun_submission(previous))
+        self.assertTrue(value._fun_metrics['round_finished'])
+        self.assertTrue(value._fun_metrics['exited'])
+        self.assertEqual(value.tasker.post_task.call_count,2)
+        self.assertTrue(all(c.args==('返回',) for c in value.tasker.post_task.call_args_list))
+        value.four_player_answer.assert_not_called()
+        value.tasker.controller.post_click.assert_not_called()
+
     def test_model_uses_fast_no_thinking_contract_and_rejects_boolean(self):
         for answer,expected in [(0,0),(3,3),(True,None),(4,None),('A',None)]:
             resolver = AIResolver('offline-key','deepseek-flash')

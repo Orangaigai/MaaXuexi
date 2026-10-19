@@ -66,8 +66,19 @@ def race_finished(records):
     words = ' '.join(row['text'] for row in records)
     if any(re.fullmatch(r'回顾本局|本局排名|比赛结束|本局结束|本场结束|对战结束|本局成绩',r['text'].strip()) for r in records):
         return True
-    return bool(re.search(r'再来一局|继续挑战|返回首页', words) and
-                re.search(r'第[一二三四1-4]名|本局得分|本局积分|恭喜获胜|未获胜|获得胜利', words))
+    if (re.search(r'再来一局|继续挑战|返回首页', words) and
+            re.search(r'第[一二三四1-4]名|本局得分|本局积分|恭喜获胜|未获胜|获得胜利', words)):
+        return True
+    # The current loss page says "继续加油！" and "积分+8", not "未获胜".
+    # Require the summary, ranking headers and bottom action together so quiz
+    # options containing those words cannot trigger an early return.
+    clean=[(re.sub(r'\s+','',unicodedata.normalize('NFKC',r['text'])),r['box'][1]) for r in records]
+    headers=''.join(text for text,y in clean if 500<=y<850)
+    ranking='排名' in headers and ('正确数/总题数' in headers or '总分' in headers)
+    summary=any(300<=y<550 and (re.fullmatch(r'继续加油[!。]?|再接再厉[!。]?',text)
+                               or re.search(r'积分\+\d+(?:分)?',text)) for text,y in clean)
+    replay=any(y>=900 and text in ('继续挑战','再来一局','返回首页') for text,y in clean)
+    return bool(ranking and summary and replay)
 
 
 def race_score_page(records):
