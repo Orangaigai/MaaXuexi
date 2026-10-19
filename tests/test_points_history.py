@@ -108,5 +108,49 @@ class PointsHistoryTests(unittest.TestCase):
             with self.subTest(month=month),self.assertRaises(ValueError):self.store.month(month)
         self.assertEqual(self.store.month('2026-02')['days'],[])
 
+    def test_platform_history_is_idempotent_and_does_not_invent_task_results(self):
+        rows=[dict(day='2026-10-18',points=44),dict(day='2026-09-27',points=0)]
+        for _ in range(2):self.store.import_daily_totals(rows,observed_at='2026-10-19T19:00:00+08:00')
+        october=PointsHistory(self.path).month('2026-10')
+        day=october['days'][0]
+        self.assertEqual(october['month_points'],44)
+        self.assertEqual(october['recorded_days'],1)
+        self.assertEqual(day['points_source'],'xuexi_points_detail')
+        self.assertEqual(day['tasks'],{})
+        self.assertEqual(day['runs'],0)
+        self.assertNotIn('results',day)
+        self.assertEqual(day['status'],'observed')
+        self.assertEqual(self.store.month('2026-09')['days'][0]['points'],0)
+
+    def test_historical_total_takes_precedence_over_an_incomplete_old_task_snapshot(self):
+        self.store.observe({'登录':dict(value=1,maximum=1)},observed_at='2026-10-18T08:00:00+08:00')
+        self.store.import_daily_totals([dict(day='2026-10-18',points=44)],observed_at='2026-10-19T19:00:00+08:00')
+        row=self.store.month('2026-10')['days'][0]
+        self.assertEqual(row['points'],44)
+        self.assertEqual(row['tasks']['登录']['value'],1)
+        self.assertFalse(row['complete_snapshot'])
+
+    def test_invalid_history_batch_is_atomic_and_cannot_write_today_or_future(self):
+        for invalid in (dict(day='2026-10-19',points=42),dict(day='2026-10-20',points=1),
+                dict(day='2026-02-30',points=1),dict(day='20261017',points=1),
+                dict(day='2026-10-17',points=True),dict(day='2026-10-17',points=-1),
+                dict(day='2026-10-17',points=1001)):
+            with self.subTest(invalid=invalid),self.assertRaises(ValueError):
+                self.store.import_daily_totals([dict(day='2026-10-18',points=44),invalid],observed_at='2026-10-19T19:00:00+08:00')
+            self.assertEqual(self.store.month('2026-10')['days'],[])
+        with self.assertRaises(ValueError):
+            self.store.import_daily_totals([dict(day='2026-10-18',points=44),dict(day='2026-10-18',points=40)],
+                observed_at='2026-10-19T19:00:00+08:00')
+
+    def test_old_history_cannot_replace_newer_confirmed_total_and_today_is_unchanged(self):
+        self.store.record_run(report())
+        self.store.import_daily_totals([dict(day='2026-10-18',points=44)],observed_at='2026-10-19T19:00:00+08:00')
+        self.store.import_daily_totals([dict(day='2026-10-18',points=40)],observed_at='2026-10-19T18:00:00+08:00')
+        month=self.store.month('2026-10')
+        self.assertEqual([row['points'] for row in month['days']],[44,1])
+        self.assertEqual(month['month_points'],45)
+        self.assertEqual(month['recorded_days'],2)
+        self.assertNotIn('points_source',month['days'][1])
+
 
 if __name__=='__main__':unittest.main()

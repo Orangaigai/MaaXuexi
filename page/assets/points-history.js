@@ -23,6 +23,7 @@
     $('pointsDayState').textContent=row?states[row.status]||'已记录':'暂无记录';
     $('pointsDayState').className='badge'+(row?.status==='completed'?' ready':row&&!['observed','running'].includes(row.status)?' attention':'');
     $('pointsDayHint').textContent=!row?'这天还没有积分记录。':row.points===null?'尚未读到积分，已保留运行结果。':
+      row.points_source==='xuexi_points_detail'?`已核实 ${row.points} 分 · 平台历史记录`+(row.known_tasks?'':'，未导入逐项明细。'):
       `已核实 ${row.points} 分`+(row.complete_snapshot?'':` · ${row.known_tasks}项任务`);
     $('pointsTaskDetails').replaceChildren();
     for(const name of names){

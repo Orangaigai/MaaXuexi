@@ -1,6 +1,6 @@
 """Local daily score observations; reruns replace snapshots, never add them."""
 from contextlib import contextmanager
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 import json
 import re
@@ -47,6 +47,10 @@ class PointsHistory:
                         started_at TEXT NOT NULL, finished_at TEXT, selected TEXT NOT NULL
                     );
                     CREATE INDEX IF NOT EXISTS runs_day ON runs(day,started_at);
+                    CREATE TABLE IF NOT EXISTS daily_totals (
+                        day TEXT PRIMARY KEY, points INTEGER NOT NULL,
+                        observed_at TEXT NOT NULL
+                    );
                     CREATE TABLE IF NOT EXISTS task_results (
                         day TEXT NOT NULL, task TEXT NOT NULL, state TEXT NOT NULL,
                         reason TEXT NOT NULL, mode TEXT NOT NULL, observed_at TEXT NOT NULL,
@@ -70,6 +74,28 @@ class PointsHistory:
     def observe(self, scores, *, observed_at=None):
         with self.connect() as db:
             self._observe(db, scores, beijing_time(observed_at))
+
+    def import_daily_totals(self, rows, *, observed_at=None):
+        """Import checked past-day totals from the app; never infer task outcomes."""
+        observed = beijing_time(observed_at)
+        validated = {}
+        for row in rows:
+            day, points = row.get('day'), row.get('points')
+            try:
+                parsed = date.fromisoformat(day)
+            except (TypeError, ValueError):
+                raise ValueError('历史积分日期无效。') from None
+            if (parsed.isoformat() != day or not 1970 <= parsed.year <= 2100
+                    or parsed >= observed.date() or type(points) is not int or not 0 <= points <= 1000
+                    or day in validated and validated[day] != points):
+                raise ValueError('请使用已核实的往日积分，同一日期不能有冲突分数。')
+            validated[day] = points
+        with self.connect() as db:
+            db.executemany('''INSERT INTO daily_totals VALUES(?,?,?)
+                ON CONFLICT(day) DO UPDATE SET points=excluded.points,observed_at=excluded.observed_at
+                WHERE excluded.observed_at>=daily_totals.observed_at''',
+                [(day, points, observed.isoformat(timespec='microseconds')) for day, points in validated.items()])
+        return len(validated)
 
     def record_run(self, report):
         if not isinstance(report, dict) or report.get('status') not in STATES:
@@ -124,6 +150,7 @@ class PointsHistory:
             rows = db.execute('SELECT * FROM scores WHERE day LIKE ? ORDER BY day,task', (month+'-%',)).fetchall()
             runs = db.execute('SELECT * FROM runs WHERE day LIKE ? ORDER BY started_at,run_id', (month+'-%',)).fetchall()
             results = db.execute('SELECT * FROM task_results WHERE day LIKE ?', (month+'-%',)).fetchall()
+            totals = db.execute('SELECT * FROM daily_totals WHERE day LIKE ?', (month+'-%',)).fetchall()
             today_points = db.execute('SELECT SUM(value) FROM scores WHERE day=?', (today,)).fetchone()[0]
         days = {}
         for run in runs:
@@ -137,8 +164,12 @@ class PointsHistory:
         for row in results:
             if row['day'] in days:
                 days[row['day']].setdefault('results', {})[row['task']] = dict(state=row['state'], reason=row['reason'], mode=row['mode'])
+        for row in totals:
+            day = days.setdefault(row['day'], dict(day=row['day'], tasks={}, runs=0, status='observed'))
+            day.update(points=row['points'], points_source='xuexi_points_detail', total_observed_at=row['observed_at'])
         for day in days.values():
-            day['points'] = sum(row['value'] for row in day['tasks'].values()) if day['tasks'] else None
+            if day.get('points_source') != 'xuexi_points_detail':
+                day['points'] = sum(row['value'] for row in day['tasks'].values()) if day['tasks'] else None
             day['known_tasks'] = len(day['tasks'])
             day['complete_snapshot'] = len(day['tasks']) == len(ALIASES)
         return dict(month=month, today=today, today_points=today_points, timezone='Asia/Shanghai', days=sorted(days.values(), key=lambda row: row['day']),
