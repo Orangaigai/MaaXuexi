@@ -14,4 +14,7 @@
 - [MaaAssistantArknights任务反馈](https://github.com/MaaAssistantArknights/MaaAssistantArknights/issues/9853)：完成后动作应区分成功完成和仅仅结束；关闭失败时保留可处理状态。
 - [WorkBuddy-Daily](https://github.com/L0NE-6/WorkBuddy-Daily)对签到与热力墙数据口径的说明，以及[Activity Heatmap](https://github.com/SCOOP007/activity-heatmap)的日期网格思路：本项目改为直接展示已核实分数，用原生页面代码实现，不引入图表依赖或复制这些项目的代码。
 
+- [Tabler](https://github.com/tabler/tabler)的页面头部与信息层级、[Ant Design布局规范](https://ant.design/docs/spec/layout/)的间距节奏，以及[shadcn/ui](https://ui.shadcn.com/examples/dashboard)、[Soybean Admin](https://github.com/soybeanjs/soybean-admin)、[Vben Admin](https://github.com/vbenjs/vue-vben-admin)的管理台布局，用于评估宽屏布局与表单细节；沿用本项目原生页面实现，不引入这些项目的代码或运行依赖。
+- [Tabler键盘焦点反馈](https://github.com/tabler/tabler/issues/2662)及[布局间距反馈](https://github.com/tabler/tabler/issues/2500)：界面调整同时检查选中态、焦点、窄屏和异常状态，避免只验收静态外观。
+
 这些设计资料和社区讨论用于借鉴，不代表其维护者参与、认证或推荐本项目。

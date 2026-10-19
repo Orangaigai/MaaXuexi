@@ -14,7 +14,8 @@ py -3.12 -m venv .venv
 
 ## 文件职责
 
-- `page/assets/console.css` 集中维护控制台外观；`local-provider.js` 负责控制台状态和任务操作，`local-schedule.js` 负责时间与执行方式。更改布局应保留控件ID、语义和键盘操作。
+- `page/assets/ui-base.css` 维护共享的颜色、字体、按钮和控件；`console.css` 维护控制台布局，`key-setup.css` 维护密钥页和指引。样式随源码本地加载，不依赖在线字体或界面框架。
+- `local-provider.js` 负责状态和任务操作，`local-schedule.js` 负责执行方式和时间，`points-history.js` 负责日历与收尾选项。更改布局应保留控件ID、语义和键盘操作。
 - `backend` 模块见[模块说明](architecture.md)。不要把已经分开的导航、识别、模型和核分重新塞进一个页面脚本。
 - `config/*.example.json` 是可发布示例；真实JSON、DPAPI、数据库和运行记录一律保留在本机。
 - `tests/fixtures` 只使用固定、最小化、可公开的测试样本。新截图需检查账号、头像、手机号、评论人信息和密钥是否需要去除。
@@ -28,11 +29,20 @@ py -3.12 -m venv .venv
 node --check page\assets\local-provider.js
 node --check page\assets\local-schedule.js
 node --check page\assets\key-setup.js
+node --check page\assets\points-history.js
 ```
 
 仓库检查核对发布文件、源文件清单、文档本地链接和配置边界。GitHub Actions在Windows下安装锁定依赖并运行离线测试，不接模拟器、不配置API密钥、不操作真实账号。
 
 浏览器验收应覆盖：任务选择与保存、配置失败提示、手动/自动切换、未保存时间编辑、运行/暂停/待验证状态、长错误、键盘操作和手机窄屏。纯外观改动不要用重复公开发言来验收。
+
+## 界面维护
+
+- 大屏按“状态概览 → 任务与执行设置 → 积分 → 可展开工具”布局，窄屏保持相同顺序；避免固定侧边导航挤占操作区域。
+- 主要按钮用于执行或继续；需要先配置密钥时突出配置入口，保存与自检使用辅助样式。
+- 优先复用共享样式，再按页面补充布局；外层留白、卡片间距与控件尺寸统一调整，避免累加临时覆盖规则。
+- 验证提示同时提供文字和颜色；隐藏控件仍保留原生标签，选项必须有可见键盘焦点。未核实积分与实际零分要区别呈现。
+- 在320、375、760、960、1180和1440像素等宽度检查溢出、表单、长提示与弹窗；截图使用演示数据，并明确区别界面交互测试和真实任务验收。
 
 ## 识别与模型改动
 

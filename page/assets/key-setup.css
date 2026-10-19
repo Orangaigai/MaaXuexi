@@ -1,0 +1,57 @@
+/* The setup guide shares the console's palette, controls and type scale. */
+main { max-width: 720px; margin: 42px auto; padding: 0 24px; }
+header { margin-bottom: 24px; }
+header > a { display: inline-flex; align-items: center; min-height: 36px; color: var(--muted); font-size: 12px; text-decoration: none; }
+header > a:hover { color: var(--blue); }
+h1 { margin: 12px 0 6px; font-size: 26px; }
+header p { font-size: 13px; }
+.card { padding: 30px; }
+.topline { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--soft-line); }
+#status { display: inline-flex; align-items: center; gap: 8px; color: #365f96; font-size: 13px; }
+#status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #7896bc; }
+label { display: block; font-size: 13px; font-weight: 600; margin: 24px 0 9px; }
+input[type=password] { width: 100%; min-height: 44px; padding: 10px 12px; }
+#keyPrivacy { display: block; margin-top: 9px; font-size: 11px; line-height: 1.8; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.form-actions { margin: 20px 0 12px; }
+.form-actions button { min-height: 42px; font-size: 13px; }
+#result { margin-top: 20px; padding: 13px 15px; border-radius: 8px; background: #f3f7fc; color: #566e8b; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+#result.success { background: #edf7f1; color: var(--green); }
+#result.failure { background: #fff4ef; color: #a34124; }
+.key-note { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--soft-line); }
+.key-note p { font-size: 11px; line-height: 1.8; }
+.key-note .actions { gap: 20px; margin-top: 12px; }
+.key-note a { font-size: 12px; text-decoration: none; }
+.key-note a:hover { text-decoration: underline; }
+.subtle-button { min-height: 34px; border: 0; background: transparent; padding: 3px 0; color: var(--blue); font-size: 12px; }
+.subtle-button:hover:not(:disabled) { background: transparent; text-decoration: underline; }
+dialog { width: calc(100% - 32px); max-width: 552px; max-height: calc(100dvh - 40px); border: 1px solid var(--line); border-radius: 16px; padding: 30px; background: white; color: var(--text); box-shadow: 0 24px 80px #1c35542b; overflow: auto; }
+dialog::backdrop { background: #26394e65; backdrop-filter: blur(3px); }
+dialog h2 { margin-bottom: 10px; font-size: 21px; }
+dialog p { font-size: 13px; line-height: 1.85; }
+.welcome-actions { display: grid; gap: 10px; margin: 24px 0 18px; }
+.welcome-actions button { width: 100%; min-height: 44px; }
+.welcome-actions + a { display: inline-block; margin-top: 2px; }
+.stepper { display: grid; grid-template-columns: repeat(4,1fr); list-style: none; gap: 8px; padding: 0; margin: 0 0 24px; }
+.stepper li { padding-top: 8px; border-top: 3px solid #e6ebf3; color: #718199; font-size: 11px; }
+.stepper li[aria-current=step] { border-color: var(--blue); color: var(--blue); font-weight: 600; }
+.stepper li.done { border-color: #a4bfdf; }
+.step-panel { min-height: 230px; }
+.step-count { margin-bottom: 6px; color: var(--muted); font-size: 11px; }
+.guide-link { margin: 18px 0 12px; }
+.guide-link .button { font-size: 13px; }
+.tip { margin-top: 14px; padding: 11px 13px; background: #f4f7fc; border-radius: 8px; font-size: 11px; }
+.step-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--soft-line); }
+.step-footer button { min-height: 40px; font-size: 13px; }
+.help-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-top: 16px; }
+.help-bottom > span { font-size: 10px; }
+@media (max-width: 500px) {
+  main { margin: 22px auto; padding: 0 14px; }
+  .card { padding: 21px; }
+  .topline { flex-wrap: wrap; gap: 5px; }
+  dialog { padding: 22px; }
+  .stepper { gap: 5px; }
+  .stepper li { font-size: 10px; }
+  .step-panel { min-height: 250px; }
+  dialog h2 { font-size: 19px; }
+}

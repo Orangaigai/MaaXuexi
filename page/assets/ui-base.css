@@ -1,0 +1,53 @@
+/* Shared, local-only foundation for the console and key setup. */
+:root {
+  color-scheme: light;
+  --canvas: #f5f7fa;
+  --surface: #fff;
+  --text: #25334a;
+  --muted: #607087;
+  --line: #dce4ee;
+  --soft-line: #edf1f6;
+  --blue: #2563c5;
+  --blue-hover: #1c52ab;
+  --blue-soft: #f0f5fd;
+  --green: #26704f;
+  --amber: #8a6027;
+  --radius: 12px;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body { margin: 0; background: var(--canvas); color: var(--text); font: 14px/1.65 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+h1, h2, h3, p { margin: 0; }
+h1 { font-size: 24px; font-weight: 650; line-height: 1.4; letter-spacing: -.5px; }
+h2 { font-size: 16px; font-weight: 650; line-height: 1.5; }
+h3 { font-size: 14px; font-weight: 600; }
+p { color: var(--muted); }
+a { color: var(--blue); text-underline-offset: 3px; }
+.muted { font-size: 12px; color: var(--muted); }
+.icon { width: 18px; height: 18px; flex: 0 0 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.card { min-width: 0; border: 1px solid #e6ebf2; border-radius: var(--radius); background: var(--surface); box-shadow: 0 3px 12px #263f6503; }
+button, .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: #3c4d66; font: inherit; font-weight: 500; line-height: 1.5; text-decoration: none; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }
+button:hover:not(:disabled), .button:hover { border-color: #b7c8de; background: #f7f9fc; }
+.primary, .button.primary { background: var(--blue); border-color: var(--blue); color: white; }
+.primary:hover:not(:disabled), .button.primary:hover { background: var(--blue-hover); border-color: var(--blue-hover); box-shadow: 0 3px 8px #2563c51a; }
+.accent { background: var(--blue-soft); border-color: #dfe9f7; color: #275ca7; }
+.quiet { background: transparent; border-color: transparent; color: #5c6c82; }
+.compact { min-height: 34px; padding: 5px 12px; font-size: 12px; }
+.danger { border-color: #eddad5; color: #a44130; }
+.danger:hover:not(:disabled) { border-color: #d6aaa0; background: #fff7f5; }
+button:disabled { background: #f5f7fa; border-color: #e7ecf2; color: #8c98a9; cursor: default; box-shadow: none; }
+button.primary:disabled { background: #dfe9f8; border-color: #dfe9f8; color: #6c82a3; }
+input[type=checkbox], input[type=radio] { width: 17px; height: 17px; flex: 0 0 17px; margin: 0; accent-color: var(--blue); cursor: inherit; }
+input[type=time], input[type=password] { min-width: 0; min-height: 40px; border: 1px solid #cdd8e7; border-radius: 7px; background: white; color: var(--text); padding: 7px 10px; font: inherit; }
+input:disabled { color: #8390a2; border-color: #e3e9f1; background: #f7f9fc; cursor: default; }
+:where(button, a, input, select, summary):focus-visible { outline: 3px solid #4b83cd; outline-offset: 3px; }
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 6px; background: var(--blue-soft); color: #3d6395; font-size: 11px; line-height: 1.6; white-space: nowrap; }
+.badge.ready { background: #edf7f1; color: var(--green); }
+.badge.attention { background: #fff5e6; color: var(--amber); }
+.feedback { margin-top: 10px; font-size: 12px; color: #93531c; overflow-wrap: anywhere; }
+.feedback:empty { display: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
+}

@@ -35,6 +35,7 @@
   }
   function renderSavedState(){
     const changed=savedTasks!==null&&selectionKey(plan().tasklist)!==selectionKey(savedTasks);
+    $('taskSelectionCount').textContent=loaded?`已选 ${plan().tasklist.length} 项`:'';
     $('taskEditState').textContent=!loaded?'读取中':changed?'有修改，尚未保存':'已保存';
     $('taskEditState').classList.toggle('unsaved',changed);
     renderActionEmphasis();
