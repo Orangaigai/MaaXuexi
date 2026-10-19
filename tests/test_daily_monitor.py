@@ -10,6 +10,51 @@ from pathlib import Path
 
 @unittest.skipUnless(os.name == 'nt', 'Windows scheduled launcher')
 class DailyMonitorTests(unittest.TestCase):
+    def monitor_outcome(self,status,last_error='',startup_code=0):
+        source=Path(__file__).resolve().parents[1]/'scripts/Run-Daily.ps1'
+        with tempfile.TemporaryDirectory(prefix='maa-monitor-outcome-') as temporary:
+            root=Path(temporary)
+            (root/'scripts').mkdir();(root/'config').mkdir()
+            shutil.copyfile(source,root/'scripts/Run-Daily.ps1')
+            (root/'scripts/Start-MaaXuexi.ps1').write_text('exit '+str(startup_code)+'\n',encoding='utf-8-sig')
+            (root/'config/local-task-plan.json').write_text(json.dumps(dict(tasklist=['登录'])),encoding='utf-8')
+            launcher=str(root/'scripts/Run-Daily.ps1').replace("'","''")
+            wrapper=root/'test.ps1'
+            wrapper.write_text("""
+$ErrorActionPreference='Stop'
+$global:submissions=0
+function Start-Sleep { param($Seconds) }
+function Start-Process { param($FilePath) }
+function Invoke-RestMethod {
+    param($Uri,$Method,$ContentType,$Body,$TimeoutSec)
+    if($Uri.EndsWith('/api/start')) { $global:submissions++; return @{status='success'} }
+    if(!$Uri.EndsWith('/api/status')) { throw 'Unexpected request' }
+    return [pscustomobject]@{connected=$true;api_key_configured=$true;task_running=$false;paused=$false;
+        last_error='"""+last_error+"""';run_summary=@{status='"""+status+"""'}}
+}
+& '"""+launcher+"""'
+@{exit_code=$LASTEXITCODE;submissions=$global:submissions} | ConvertTo-Json -Compress
+""",encoding='utf-8-sig')
+            result=subprocess.run(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(wrapper)],
+                capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=20,creationflags=subprocess.CREATE_NO_WINDOW)
+            self.assertEqual(result.returncode,0,result.stderr)
+            observation=json.loads(result.stdout.strip().splitlines()[-1])
+            log=next((root/'logs').glob('daily-*.log')).read_text('utf-8-sig')
+            return observation,log
+
+    def test_started_but_unfinished_tasks_are_pending_action_not_startup_failures(self):
+        for status,error in [('stopped',''),('partial',''),('failed','simulated task error')]:
+            with self.subTest(status=status):
+                observation,log=self.monitor_outcome(status,error)
+                self.assertEqual(observation,dict(exit_code=2,submissions=1))
+                self.assertIn('after successful startup',log)
+                self.assertNotIn('Daily launcher failed:',log)
+
+    def test_genuine_startup_failure_retains_failure_exit_code(self):
+        observation,log=self.monitor_outcome('stopped',startup_code=9)
+        self.assertEqual(observation,dict(exit_code=1,submissions=0))
+        self.assertIn('Daily launcher failed:',log)
+
     def test_owner_pause_is_monitored_without_exiting_or_resubmitting(self):
         source = Path(__file__).resolve().parents[1] / 'scripts/Run-Daily.ps1'
         with tempfile.TemporaryDirectory(prefix='maa-owner-monitor-') as temporary:

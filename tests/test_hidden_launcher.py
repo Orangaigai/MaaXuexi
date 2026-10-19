@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 SOURCE = Path(__file__).resolve().parents[1]/'scripts/Launch-Hidden.py'
@@ -18,6 +19,21 @@ spec.loader.exec_module(launcher)
 
 @unittest.skipUnless(os.name == 'nt', 'Windows GUI launcher')
 class HiddenLauncherTests(unittest.TestCase):
+    def test_daily_task_results_do_not_show_a_startup_failure_modal(self):
+        for code in (0,2,3):
+            with self.subTest(code=code), tempfile.TemporaryDirectory() as temporary:
+                with patch.object(launcher.subprocess,'run',return_value=subprocess.CompletedProcess([],code)), \
+                     patch.object(launcher,'show_failure') as failure:
+                    self.assertEqual(launcher.run_launcher(temporary,daily=True),code)
+                    failure.assert_not_called()
+
+    def test_genuine_daily_startup_failure_still_shows_the_error(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(launcher.subprocess,'run',return_value=subprocess.CompletedProcess([],1)), \
+                 patch.object(launcher,'show_failure') as failure:
+                self.assertEqual(launcher.run_launcher(temporary,daily=True),1)
+                failure.assert_called_once()
+
     def test_pythonw_entry_and_powershell_child_allocate_no_console(self):
         with tempfile.TemporaryDirectory(prefix='maa hidden 中文 ') as temporary:
             root = Path(temporary).resolve()

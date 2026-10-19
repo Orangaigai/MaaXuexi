@@ -24,6 +24,7 @@ $logPath = Join-Path $logRoot ('daily-'+(Get-Date -Format 'yyyyMMdd-HHmmss')+'.l
 function Write-RunLog([string]$message) { Add-Content -LiteralPath $logPath -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss')+' '+$message) -Encoding UTF8 }
 $runLock = $null
 $powerHeld = $false
+$submitted = $false
 try {
     try { $runLock = [IO.File]::Open((Join-Path $logRoot 'daily-run.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None) }
     catch [IO.IOException] { Write-RunLog 'Another daily launcher is running; skipped.'; exit 0 }
@@ -56,6 +57,7 @@ try {
     if ($VerificationFirst) { Write-RunLog 'Temporary verification-first acceptance; saved daily plan is unchanged.' }
     $result = Invoke-RestMethod ($baseUrl+$startPath) -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -TimeoutSec 10
     if ($result.status -ne 'success') { Write-RunLog 'Task start was declined; check the control page.'; exit 1 }
+    $submitted = $true
     Write-RunLog ('Submitted '+$taskNames.Count+' selected tasks. API key is not logged.')
     $deadline = (Get-Date).AddMinutes(45)
     $monitorFailures = 0
@@ -90,14 +92,15 @@ try {
         }
     } while ($health.task_running)
     if ($health.run_summary.status -eq 'needs_human') { Write-RunLog 'User action required. Unattended run ended; completed scores retained. No further app operation was attempted.'; exit 2 }
-    if ($health.last_error) { Write-RunLog 'Task reported an error. Check the control page and backend stderr logs.'; exit 1 }
-    if ($health.run_summary.status -ne 'completed') { Write-RunLog 'Task stopped without confirmed full scores. Check the control page.'; exit 1 }
+    if ($health.last_error) { Write-RunLog 'Task reported an error after successful startup. Check the control page and backend stderr logs.'; exit 2 }
+    if ($health.run_summary.status -ne 'completed') { Write-RunLog 'Task ended after successful startup; remaining items are recorded on the control page.'; exit 2 }
     $credited = @($health.run_summary.tasks.PSObject.Properties | Where-Object { $_.Value.state -eq 'credited' })
     $skippedModes = @($health.run_summary.tasks.PSObject.Properties | Where-Object { $_.Value.state -eq 'skipped_mode' })
     if ($skippedModes.Count) { Write-RunLog 'Competitive quiz skipped by owner policy. Other selected task scores verified; no points claimed for the skipped mode.' }
     elseif ($credited.Count) { Write-RunLog 'All selected tasks verified; the fun quiz first-round credit is recorded at its actual score, without rematching.' }
     else { Write-RunLog 'All selected task scores were verified complete or already full.' }
 } catch {
+    if ($submitted) { Write-RunLog ('Task monitoring ended after successful startup: '+$_.Exception.Message); exit 2 }
     Write-RunLog ('Daily launcher failed: '+$_.Exception.Message)
     exit 1
 } finally {
