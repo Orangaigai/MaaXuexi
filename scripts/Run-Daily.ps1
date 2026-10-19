@@ -25,6 +25,22 @@ function Write-RunLog([string]$message) { Add-Content -LiteralPath $logPath -Val
 $runLock = $null
 $powerHeld = $false
 $submitted = $false
+$submittedAt = $null
+$expectedRunId = $null
+
+function Read-CompletedRunFromDisk {
+    param([string]$Path,[DateTimeOffset]$SubmittedAt,[string]$ExpectedRunId,[string[]]$Tasks)
+    try {
+        $saved=Get-Content -LiteralPath $Path -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($saved.status -ne 'completed' -or !$saved.finished_at) { return }
+        if ($ExpectedRunId -and $saved.run_id -ne $ExpectedRunId) { return }
+        if ([DateTimeOffset]::Parse([string]$saved.started_at) -lt $SubmittedAt) { return }
+        $rows=@($saved.tasks.PSObject.Properties)
+        if ((@($rows.Name | Sort-Object)-join '|') -ne (@($Tasks | Sort-Object)-join '|')) { return }
+        if (@($rows | Where-Object { $_.Value.state -notin @('verified','skipped_full','credited','skipped_mode') }).Count) { return }
+        return $saved
+    } catch { return }
+}
 try {
     try { $runLock = [IO.File]::Open((Join-Path $logRoot 'daily-run.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None) }
     catch [IO.IOException] { Write-RunLog 'Another daily launcher is running; skipped.'; exit 0 }
@@ -37,7 +53,7 @@ try {
     try { $health = Invoke-RestMethod ($baseUrl+'/api/status') -TimeoutSec 5 } catch { }
     if ($health -and $health.task_running) {
         if (!$NoBrowser) {
-            try { Start-Process -FilePath ($baseUrl+'/') }
+            try { & (Join-Path $appRoot 'scripts\Start-MaaXuexi.ps1') }
             catch { Write-RunLog ('Could not open the browser. Progress page: '+$baseUrl+'/') }
         }
         Write-RunLog 'A learning task is already running; skipped.'
@@ -55,6 +71,7 @@ try {
     $payload = @{tasklist=$taskNames;fast_answer=$false;debug=$false;unattended=$true} | ConvertTo-Json -Compress
     $startPath = if ($VerificationFirst) { '/api/local/verify-full-flow' } else { '/api/start' }
     if ($VerificationFirst) { Write-RunLog 'Temporary verification-first acceptance; saved daily plan is unchanged.' }
+    $submittedAt = [DateTimeOffset]::UtcNow.AddSeconds(-1)
     $result = Invoke-RestMethod ($baseUrl+$startPath) -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -TimeoutSec 10
     if ($result.status -ne 'success') { Write-RunLog 'Task start was declined; check the control page.'; exit 1 }
     $submitted = $true
@@ -75,9 +92,18 @@ try {
         }
         try {
             $health = Invoke-RestMethod ($baseUrl+'/api/status') -TimeoutSec 15
+            if ($health.run_summary.started_at -and [DateTimeOffset]::Parse([string]$health.run_summary.started_at) -ge $submittedAt) {
+                $expectedRunId = [string]$health.run_summary.run_id
+            }
             if ($monitorFailures) { Write-RunLog 'Backend status monitoring recovered; continuing the existing task.' }
             $monitorFailures = 0
         } catch {
+            $saved=Read-CompletedRunFromDisk -Path (Join-Path $appRoot 'config\last-run.json') -SubmittedAt $submittedAt -ExpectedRunId $expectedRunId -Tasks $taskNames
+            if ($saved) {
+                $health=[pscustomobject]@{task_running=$false;paused=$false;run_summary=$saved;last_error=$null}
+                Write-RunLog 'Completed run confirmed on disk after automatic resource cleanup; no task resubmitted.'
+                break
+            }
             $monitorFailures += 1
             Write-RunLog ('Backend status temporarily unavailable; waiting for the existing task, without resubmitting ('+$monitorFailures+').')
             $health = [pscustomobject]@{task_running=$true;paused=$false}

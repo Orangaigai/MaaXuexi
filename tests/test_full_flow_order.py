@@ -28,7 +28,8 @@ class FullFlowOrderTests(unittest.TestCase):
 
     def test_executor_keeps_one_worker_for_all_eight_tasks(self):
         tasks=webui.TaskModel(tasklist=list(ALIASES),unattended=True)
-        state=SimpleNamespace(worker=SimpleNamespace(task=Mock()),lock=__import__('threading').Lock(),child_process=Mock(),current_tasks=[])
+        state=SimpleNamespace(worker=SimpleNamespace(task=Mock()),lock=__import__('threading').Lock(),
+                              child_process=Mock(),current_tasks=[],points=Mock(),completion=Mock())
         with patch.object(webui,'app_state',state):webui.execute_tasks(tasks,verification_first=True)
         state.worker.task.assert_called_once_with(list(ALIASES),False,False,unattended=True,verification_first=True)
 

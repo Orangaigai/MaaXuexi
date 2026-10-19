@@ -15,6 +15,9 @@ class ScoreNavigation:
                 self._dismiss_recent_media()
                 scores = self._read_score_pages(targets)
                 if all(name in scores for name in targets):
+                    observer = getattr(self, 'score_observer', None)
+                    if callable(observer):
+                        observer(scores)
                     return scores
             if attempt < 2:
                 self.send_log(f'积分页数据未完整加载，等待后重新打开核分（重试 {attempt+1}/2）')

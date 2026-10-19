@@ -143,17 +143,14 @@ function Invoke-RestMethod {
                 root = Path(temporary)
                 (root/'scripts').mkdir()
                 shutil.copyfile(source, root/'scripts/Run-Daily.ps1')
+                (root/'scripts/Start-MaaXuexi.ps1').write_text(
+                    "$global:opens++\nif($global:browserFails){throw 'Simulated browser failure'}\n",encoding='utf-8-sig')
                 launcher = str(root/'scripts/Run-Daily.ps1').replace("'", "''")
                 wrapper = root/'test.ps1'
                 wrapper.write_text("""
 $ErrorActionPreference='Stop'
 $global:opens=0
-function Start-Process {
-    param($FilePath)
-    if($FilePath -ne 'http://127.0.0.1:8000/'){throw 'Unexpected URL'}
-    $global:opens++
-    if(""" + ('$true' if browser_fails else '$false') + """){throw 'Simulated browser failure'}
-}
+$global:browserFails=""" + ('$true' if browser_fails else '$false') + """
 function Invoke-RestMethod {
     param($Uri,$Method,$ContentType,$Body,$TimeoutSec)
     if(!$Uri.EndsWith('/api/status')){throw 'Unexpected task submission'}

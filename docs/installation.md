@@ -4,7 +4,7 @@
 
 - Windows 10/11 64 位。当前完整运行环境按 **Python 3.12 64 位**验证；不承诺其他系统或 Python 次版本直接可用。
 - 从 [Python 官方网站](https://www.python.org/downloads/windows/)安装 Python 3.12，并保留 Python Launcher（`py`）。在终端输入 `py -3.12 --version` 应显示版本号。
-- 安装带 `nx_main/MuMuManager.exe` 与 `nx_main/adb.exe` 的 [MuMu 模拟器](https://mumu.163.com/)。当前实测使用这类 MuMu Windows 实例；不将其他模拟器标记为已支持。
+- 安装带 `nx_main/MuMuManager.exe` 或 `nx_main/mumu-cli.exe`，以及 `nx_main/adb.exe` 的 [MuMu 模拟器](https://mumu.163.com/)。当前实测包含新版MuMu15的mumu-cli入口；不将其他模拟器标记为已支持。
 - 在 MuMu 安装学习强国并本人登录。应用运行时应提供 **720×1280 的竖屏画面**；确认字体缩放、分辨率和窗口方向适合现有识别资源。
 - Maa 原生组件若提示缺少 DLL，安装 [Microsoft 官方 Visual C++ x64 运行库](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist)。
 

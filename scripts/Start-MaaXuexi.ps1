@@ -2,11 +2,21 @@ param([switch]$NoBrowser, [switch]$Reconnect)
 $ErrorActionPreference = 'Stop'
 $appRoot = Split-Path -Parent $PSScriptRoot
 $processRecordPath = Join-Path $appRoot 'logs\server-process.json'
+. (Join-Path $PSScriptRoot 'Control-Browser.ps1')
 
 function Open-ControlPage {
     if ($NoBrowser) { return }
-    try { Start-Process -FilePath 'http://127.0.0.1:8000/' }
+    try { Open-ControlBrowser $appRoot }
     catch { Write-Host 'Could not open the browser. Progress page: http://127.0.0.1:8000/' }
+}
+
+function Test-ViewCompletedDay($Health) {
+    if ($Reconnect -or $Health.task_running -or $Health.run_summary.status -ne 'completed') { return $false }
+    try {
+        $finished=[DateTimeOffset]::Parse([string]$Health.run_summary.finished_at)
+        $beijing=[TimeSpan]::FromHours(8)
+        return $finished.ToOffset($beijing).Date -eq [DateTimeOffset]::UtcNow.ToOffset($beijing).Date
+    } catch { return $false }
 }
 
 function Get-InstalledBackendVersion {
@@ -47,6 +57,19 @@ function Save-ProcessRecords($processes) {
     $records = @($processes | ForEach-Object { [pscustomobject]@{pid=$_.Id;start_utc=$_.StartTime.ToUniversalTime().ToString('O');executable=$_.Path;root=$appRoot} })
     $encoding = New-Object System.Text.UTF8Encoding($false)
     [IO.File]::WriteAllText($processRecordPath,(ConvertTo-Json -InputObject $records -Depth 5),$encoding)
+}
+
+function Read-RecordedBackendState([int]$TimeoutMilliseconds = 15000) {
+    $deadline=(Get-Date).AddMilliseconds($TimeoutMilliseconds)
+    while (@(Get-RecordedProcesses).Count -gt 0) {
+        try {
+            $state=Invoke-RestMethod -Uri 'http://127.0.0.1:8000/api/status' -TimeoutSec 1
+            if ($state.completion_action.state -notin @('closing','closed')) { return $state }
+        } catch { }
+        if ((Get-Date) -ge $deadline) { throw 'The recorded local backend is still starting or closing. No unrelated process was stopped.' }
+        Start-Sleep -Milliseconds 150
+    }
+    return $null
 }
 
 function Initialize-LocalSettings {
@@ -246,21 +269,23 @@ try {
     $expectedLocalVersion = Get-InstalledBackendVersion
     $matching = @(Get-RecordedProcesses)
     if ($matching.Count -gt 0) {
-        $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/api/status' -TimeoutSec 5
-        if ($health.status -ne 'running') { throw 'The existing process is not ready. Stop it and try again.' }
-        if ($health.backend -ne 'deepseek-local') { throw 'The original backend is running. Stop MaaXuexi, then start it again.' }
-        if (!$health.task_running -and $health.local_version -ne $expectedLocalVersion) {
-            Write-Host 'Loading the updated local backend. The current task has ended.'
-            & (Join-Path $appRoot 'scripts\Stop-MaaXuexi.ps1')
-            if ($LASTEXITCODE -ne 0) { throw 'Could not stop the previous local backend.' }
-            Wait-BackendPortFree
-        } else {
-            Open-ControlPage
-            if (!$health.task_running) { Connect-ConfiguredEmulator }
-            Write-Host 'MaaXuexi is already running: http://127.0.0.1:8000/'
-            if ($health.task_running -and $health.local_version -ne $expectedLocalVersion) { Write-Host 'The active task is preserved; the update will load on the next idle startup.' }
-            exit 0
-        }
+        $health = Read-RecordedBackendState
+        if ($health) {
+            if ($health.status -ne 'running') { throw 'The existing process is not ready. Stop it and try again.' }
+            if ($health.backend -ne 'deepseek-local') { throw 'The original backend is running. Stop MaaXuexi, then start it again.' }
+            if (!$health.task_running -and $health.local_version -ne $expectedLocalVersion) {
+                Write-Host 'Loading the updated local backend. The current task has ended.'
+                & (Join-Path $appRoot 'scripts\Stop-MaaXuexi.ps1')
+                if ($LASTEXITCODE -ne 0) { throw 'Could not stop the previous local backend.' }
+                Wait-BackendPortFree
+            } else {
+                Open-ControlPage
+                if (!$health.task_running -and !(Test-ViewCompletedDay $health)) { Connect-ConfiguredEmulator }
+                Write-Host 'MaaXuexi is already running: http://127.0.0.1:8000/'
+                if ($health.task_running -and $health.local_version -ne $expectedLocalVersion) { Write-Host 'The active task is preserved; the update will load on the next idle startup.' }
+                exit 0
+            }
+        } else { Wait-BackendPortFree }
     }
     if (Test-BackendPortOccupied) { throw 'Port 8000 is occupied by an unrecorded program. No unrelated process was stopped.' }
 
@@ -292,7 +317,7 @@ try {
     Initialize-LocalSettings
     Write-Host 'MaaXuexi is ready: http://127.0.0.1:8000/'
     Open-ControlPage
-    Connect-ConfiguredEmulator
+    if (!(Test-ViewCompletedDay $health)) { Connect-ConfiguredEmulator }
     Write-Host 'Logs are saved in the logs folder. No learning task has been started.'
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red

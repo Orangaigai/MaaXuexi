@@ -39,6 +39,14 @@ class PublicInstallTests(unittest.TestCase):
         result=self.run_install(root,mumu);self.assertEqual(result.returncode,0,result.stderr+result.stdout)
         self.assertTrue(all((root/'config'/name).read_bytes()==value for name,value in keep.items()))
 
+    def test_new_mumu_cli_layout_is_accepted_without_launching_it(self):
+        root,mumu=self.setup_copy()
+        (mumu/'nx_main/MuMuManager.exe').rename(mumu/'nx_main/mumu-cli.exe')
+        result=self.run_install(root,mumu)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        config=json.loads((root/'config/emulator.json').read_text('utf-8-sig'))
+        self.assertEqual(Path(config['mumu_cli']).name,'mumu-cli.exe')
+
     def test_first_install_creates_basics_and_a_disabled_owned_schedule(self):
         root,mumu=self.setup_copy()
         script=r'''

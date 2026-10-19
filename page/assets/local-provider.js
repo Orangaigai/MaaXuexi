@@ -4,9 +4,6 @@
   const names=['登录','选读文章','视听学习','本地频道','趣味答题','订阅','发表观点','每日答题'];
   const verificationTasks=new Set(['趣味答题','订阅','发表观点','每日答题']);
   const aiTasks=new Set(['趣味答题','发表观点','每日答题']);
-  const labels={pending:'等待',running:'执行中',skipped_full:'已满分，跳过',skipped_mode:'按设置跳过',verified:'积分已核实',
-    credited:'首局积分已领取',unavailable:'暂不可用',unverified:'积分待核实',incomplete:'尚未满分',failed:'未完成',
-    stopped:'已中止',needs_human:'需本人处理',deferred:'待继续'};
   const inputs=new Map();
   let commentEnabled=false,loaded=false,busy=false,health=null,provider=null,deviceList=[],savedTasks=null;
   let refreshing=null,refreshController=null,refreshRevision=0;
@@ -117,7 +114,7 @@
     $('provider').textContent=provider?.validated?'已验证':provider?.configured?'待验证':provider?'待配置':'读取中';
     $('provider').classList.toggle('ready',Boolean(provider?.validated));
     $('provider').classList.toggle('attention',Boolean(provider&&!provider.validated));
-    $('providerHint').textContent=issue?'最近任务：'+issue+'。详情见运行结果。':provider?.configured?
+    $('providerHint').textContent=issue?'最近任务：'+issue+'。详情见每日积分。':provider?.configured?
       '用于自动答题；开启观点时也会生成短评。':'自动答题需要先配置 DeepSeek API 密钥，也可先使用基础任务。';
     $('providerSetup').textContent=provider?.configured?'管理密钥':'配置密钥';
     renderActionEmphasis();
@@ -125,35 +122,6 @@
   async function refreshProvider(){
     try{provider=await request('/api/local/provider');renderProvider();}
     catch{$('provider').textContent='暂未连接';}
-  }
-  function displayReason(reason=''){
-    return !health?.task_running&&health?.run_summary?.status==='needs_human'
-      ?reason.replace(/；正常页面恢复后(?:会自动收尾|自动继续本轮)/g,''):reason;
-  }
-  function renderResults(run){
-    const date=new Date(run?.started_at||'');
-    $('resultTime').textContent=Number.isFinite(date.getTime())?'运行于 '+new Intl.DateTimeFormat('zh-CN',{
-      timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(date):'';
-    $('results').replaceChildren();
-    for(const[name,row]of Object.entries(run?.tasks||{})){
-      if(!names.includes(name))continue;
-      const tr=document.createElement('tr'),score=row.after||row.before;
-      tr.className='result-'+row.state;
-      const mode=name==='趣味答题'&&['挑战答题','双人对战','四人赛'].includes(row.metrics?.mode)?row.metrics.mode:null;
-      const values=[mode?`${name}（${mode}）`:name,score?`${score.value}/${score.maximum}`:'待核对'];
-      for(const value of values){const td=document.createElement('td');td.textContent=value;tr.append(td);}
-      const result=document.createElement('td'),badge=document.createElement('span');
-      badge.className='result-label';badge.textContent=labels[row.state]||row.state;result.append(badge);
-      if(row.reason){
-        const reason=document.createElement('span');reason.className='result-reason';
-        reason.textContent=displayReason(row.reason);result.append(reason);
-      }
-      tr.append(result);
-      $('results').append(tr);
-    }
-    if(!$('results').children.length){
-      const tr=document.createElement('tr'),td=document.createElement('td');td.colSpan=3;td.textContent='开始执行后，这里显示任务结果。';tr.append(td);$('results').append(tr);
-    }
   }
   function refresh(force=false){
     if(refreshing&&!force)return refreshing;
@@ -173,8 +141,8 @@
         else text=run?.phase||'正在准备任务…';
       }else if(run?.status==='completed')text='本轮任务已结束，积分已核对。';
       else if(health.can_continue)text='还有任务未完成，可点击“继续执行”补做。';
-      else if(health.last_error)text='任务未完成，请查看下方结果。';
-      $('status').textContent=text;renderProvider();renderResults(run);
+      else if(health.last_error)text='任务未完成，请查看每日积分中的任务详情。';
+      $('status').textContent=text;renderProvider();
       document.title=(health.task_running?(health.paused?'[已暂停] ':'[运行中] '):health.can_continue?'[待继续] ':'')+'MaaXuexi · 任务控制台';
     }catch{if(ticket!==refreshRevision)return;health=null;$('status').textContent='后台暂未连接，正在等待恢复…';}
     controls();

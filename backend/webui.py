@@ -2,6 +2,7 @@
 import asyncio
 import json
 import os
+import sqlite3
 import subprocess
 import threading
 import traceback
@@ -25,6 +26,12 @@ from utils import MaaWorker
 from task_support import VERSION, read_report, ordered_tasks, ALIASES, TaskIncomplete
 from comment_tasks import comment_policy
 from schedule_support import ScheduleOptions, read_schedule, save_schedule, set_execution_mode
+from points_history import PointsHistory
+from completion_actions import CompletionActions, read_options, save_options
+
+class CompletionOptions(BaseModel):
+    auto_close: StrictBool
+    model_config = ConfigDict(extra='forbid')
 
 class ConfigModel(BaseModel):
     api_key: SecretStr = SecretStr('')
@@ -64,6 +71,10 @@ class AppState:
         self.log_session = uuid.uuid4().hex
         self.lock = threading.RLock()
         self.current_tasks = []
+        self.points = PointsHistory()
+        self.completion = CompletionActions()
+        self.shutdown = lambda: None
+        self.shutting_down = False
 
 app_state = AppState()
 
@@ -74,7 +85,14 @@ def ensure_worker():
     with app_state.lock:
         if app_state.worker is None:
             app_state.worker = MaaWorker(app_state.message_conn, api_key=load_key(), model=MODEL)
+            app_state.worker.score_observer = record_scores
         return app_state.worker
+
+def record_scores(scores):
+    try:
+        app_state.points.observe(scores)
+    except (OSError, sqlite3.Error):
+        app_state.worker.send_log('积分记录暂未写入，任务结束时会再次保存。')
 
 def configure_key(key):
     with app_state.lock:
@@ -94,6 +112,7 @@ def configure_key(key):
 
 async def collect_messages():
     next_cleanup=0
+    next_completion=0
     while True:
         for _ in range(500):
             if app_state.message_conn.empty():
@@ -107,16 +126,24 @@ async def collect_messages():
             report=current_report()
             try:await asyncio.to_thread(prune_logs,keep_trace=report.get('run_id'))
             except OSError:pass
+        if time.monotonic() >= next_completion:
+            next_completion = time.monotonic() + .5
+            with app_state.lock:
+                if app_state.completion.state['state'] in ('pending', 'closing'):
+                    app_state.completion.poll(current_report(), running=task_running(), shutdown=app_state.shutdown)
         await asyncio.sleep(0.05)
 
 @asynccontextmanager
 async def lifespan(app):
+    app_state.completion = CompletionActions()
+    app_state.shutting_down = False
     collector = asyncio.create_task(collect_messages())
     await asyncio.sleep(0.5)
     yield
     if app_state.worker:
         app_state.worker.stop_flag = True
         app_state.worker.pause_flag = False
+    app_state.completion.cancel()
     collector.cancel()
     try:
         await collector
@@ -138,6 +165,7 @@ def homepage():
     html = html.replace('</body>', '<script defer src="/assets/local-provider.js"></script></body>')
     html = html.replace('/assets/local-provider.js', '/assets/local-provider.js?v=' + VERSION)
     html = html.replace('</body>', '<script defer src="/assets/local-schedule.js?v=' + VERSION + '"></script></body>')
+    html = html.replace('</body>', '<script defer src="/assets/points-history.js?v=' + VERSION + '"></script></body>')
     return HTMLResponse(html, headers={'Cache-Control':'no-store'})
 
 @app.get('/local/api-key')
@@ -181,6 +209,40 @@ def get_task_plan():
 @app.get('/api/local/comment-policy')
 def get_comment_policy():
     return comment_policy()
+
+@app.get('/api/local/points-history')
+def get_points_history(month: str | None = None):
+    try:
+        app_state.points.record_run(current_report())  # Import the existing last report once by run ID.
+        return app_state.points.month(month)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
+    except (OSError, sqlite3.Error) as error:
+        raise HTTPException(503, '积分记录暂不可用，请稍后重试。') from error
+
+@app.get('/api/local/completion-options')
+def get_completion_options():
+    return read_options()
+
+@app.post('/api/local/completion-options')
+def update_completion_options(options: CompletionOptions):
+    with app_state.lock:
+        if app_state.completion.state['state'] == 'closing':
+            raise HTTPException(409, '已经开始关闭，请稍后重新打开控制台。')
+        try:
+            result = save_options(options.auto_close)
+        except OSError as error:
+            raise HTTPException(503, '自动关闭设置未保存，请稍后重试。') from error
+        if not options.auto_close:
+            app_state.completion.cancel()
+        return dict(status='success', **result)
+
+@app.post('/api/local/completion/cancel')
+def cancel_completion():
+    with app_state.lock:
+        if not app_state.completion.cancel():
+            raise HTTPException(409, '已经开始关闭，请稍后重新打开控制台。')
+        return dict(status='success', message='本次保持打开，下次仍按已保存的设置执行。')
 
 @app.get('/api/local/schedule')
 def get_schedule():
@@ -267,6 +329,7 @@ def connect_device(device: DeviceModel):
         return dict(status='success' if connected else 'failed')
 
 def execute_tasks(tasks, daily_acceptance=False, verification_first=False):
+    previous_run = current_report().get('run_id')
     try:
         worker = app_state.worker
         worker.last_task_error = None
@@ -282,6 +345,14 @@ def execute_tasks(tasks, daily_acceptance=False, verification_first=False):
         traceback.print_exc()
     finally:
         with app_state.lock:
+            report = current_report()
+            try:
+                saved = app_state.points.record_run(report)
+                if saved and report.get('run_id') != previous_run and not app_state.worker.last_task_error:
+                    app_state.completion.arm(report)
+            except (OSError, sqlite3.Error):
+                app_state.completion.state = dict(state='failed', message='积分记录未保存，已保留窗口，请稍后重试。')
+                app_state.worker.send_log('积分记录未保存，取消本次自动关闭，保留控制台。')
             app_state.child_process = None
             app_state.current_tasks = []
 
@@ -307,12 +378,15 @@ def start_selected(tasks: TaskModel, daily_acceptance=False, verification_first=
         worker = ensure_worker()
         if task_running():
             return dict(status='failed', message='任务已开始')
+        if not app_state.completion.cancel():
+            return dict(status='failed', message='正在关闭本轮窗口，请稍后重新打开控制台。')
         if not tasks.tasklist:
             return dict(status='failed', message='请先选择任务')
         if '发表观点' in tasks.tasklist and not comment_policy()['enabled']:
             return dict(status='failed', message='发表观点尚待确认按正文生成的规则和每日使用范围，未启动发表。')
         if any(name in tasks.tasklist for name in ('每日答题','趣味答题','发表观点')) and not key_configured():
             return dict(status='failed', message='答题或观点草稿任务需要先配置 DeepSeek 密钥。')
+        app_state.completion.state = dict(state='idle')
         tasks.tasklist = list(dict.fromkeys(tasks.tasklist))
         worker.stop_flag = False
         worker.pause_flag = False
@@ -383,7 +457,8 @@ def status():
                 paused=paused, pause_requested=requested,
                 manual_paused=paused and bool(getattr(app_state.worker,'_manual_hold',False)),
                 can_continue=(paused or requested) if running else bool(continuation_tasks(report)),
-                provider='deepseek', model=MODEL, api_key_configured=key_configured())
+                provider='deepseek', model=MODEL, api_key_configured=key_configured(),
+                completion_action=app_state.completion.snapshot())
 
 @app.websocket('/api/ws')
 async def websocket_endpoint(websocket: WebSocket):
@@ -396,17 +471,28 @@ async def websocket_endpoint(websocket: WebSocket):
             except ValueError:pass
         await websocket.send_json(dict(kind='hello',session=app_state.log_session))
     try:
-        while True:
+        while not app_state.shutting_down:
             for sequence, message in list(app_state.history_message):
                 if sequence > cursor:
                     if structured:
                         await websocket.send_json(dict(session=app_state.log_session,sequence=sequence,message=message))
                     else:await websocket.send_text(message)
                     cursor = sequence
-            await asyncio.sleep(0.1)
+            try:
+                message = await asyncio.wait_for(websocket.receive(), timeout=.1)
+                if message['type'] == 'websocket.disconnect':
+                    return
+            except asyncio.TimeoutError:
+                pass
     except (WebSocketDisconnect, RuntimeError):
         return
 
+def request_server_shutdown(server):
+    app_state.shutting_down = True
+    server.should_exit = True
+
 if __name__ == '__main__':
     import uvicorn
-    uvicorn.run(app, host='127.0.0.1', port=8000)
+    server = uvicorn.Server(uvicorn.Config(app, host='127.0.0.1', port=8000, timeout_graceful_shutdown=8))
+    app_state.shutdown = lambda: request_server_shutdown(server)
+    server.run()

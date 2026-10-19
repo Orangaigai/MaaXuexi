@@ -24,9 +24,10 @@ try {
     if (!$MuMuRoot) { $MuMuRoot = Read-Host 'MuMu install folder (contains nx_main)' }
     $MuMuRoot = (Resolve-Path -LiteralPath $MuMuRoot).Path
     $cliPath = Join-Path $MuMuRoot 'nx_main\MuMuManager.exe'
+    if (!(Test-Path -LiteralPath $cliPath -PathType Leaf)) { $cliPath = Join-Path $MuMuRoot 'nx_main\mumu-cli.exe' }
     $adbPath = Join-Path $MuMuRoot 'nx_main\adb.exe'
     if (!(Test-Path -LiteralPath $cliPath -PathType Leaf) -or !(Test-Path -LiteralPath $adbPath -PathType Leaf)) {
-        throw 'MuMuManager.exe or adb.exe is missing. Select the MuMu install folder, not nx_main. See docs/installation.md.'
+        throw 'MuMuManager.exe/mumu-cli.exe or adb.exe is missing. Select the MuMu install folder, not nx_main. See docs/installation.md.'
     }
 
     Set-Location -LiteralPath $appRoot
