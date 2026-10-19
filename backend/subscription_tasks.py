@@ -20,7 +20,8 @@ def subscription_scene(records):
     texts = {re.sub(r'\s+', '', row['text']) for row in records}
     if '我的订阅' in texts and '添加' in texts:
         return 'mine'
-    if {'强国号', '地方平台'} <= texts:
+    tabs = {re.sub(r'\s+', '',r['text']) for r in records if 35<=r['box'][1]<120}
+    if '地方平台' in tabs and any(re.fullmatch(r'[强強]{1,2}国号',text) for text in tabs):
         return 'catalog'
     return None
 
@@ -71,7 +72,7 @@ def subscription_accounts(records):
 
 
 def category_selected(records, image, category):
-    """The native left rail marks only its active category with a red vertical bar."""
+    """Recognize the observed red marker or white/black active rail variant."""
     rows=[r for r in records if r['box'][0]<140 and r['text'].strip()==category]
     if len(rows)!=1 or image is None or image.shape[:2]!=(1280,720):
         return False
@@ -80,7 +81,18 @@ def category_selected(records, image, category):
     if not pixels.size:
         return False
     blue,green,red=pixels[:,:,0],pixels[:,:,1],pixels[:,:,2]
-    return int(((red>180)&(red>green+60)&(red>blue+60)).sum())>=20
+    if int(((red>180)&(red>green+60)&(red>blue+60)).sum())>=20:
+        return True
+    def white_rail(row):
+        _,ry,_,rh=row['box']
+        strip=image[max(120,ry):min(1200,ry+rh),:10,:3]
+        return strip.size and (strip.min(axis=2)>=250).mean()>=.8
+    x,y,w,h=rows[0]['box']
+    text=image[y:y+h,x:x+w,:3]
+    dark=text.size and int((text.max(axis=2)<120).sum())>=12
+    other_rows=[r for r in records if r['box'][0]<140 and 120<=r['box'][1]<1180
+                and r['text'].strip() in CATEGORIES+('推荐','机关企事业') and r is not rows[0]]
+    return bool(white_rail(rows[0]) and dark and any(not white_rail(r) for r in other_rows))
 
 
 class SubscriptionTasks:
@@ -254,18 +266,24 @@ class SubscriptionTasks:
         candidates = [a for a in subscription_accounts(records)
                       if a['name'] == account['name'] and a['state'] == '订阅']
         if subscription_scene(records) != 'catalog' or len(candidates) != 1:
+            self._sub_evidence('candidate-changed',records)
             raise TaskIncomplete('订阅账号位置或状态已改变，未发送订阅')
         store.begin(account['name'], account['kind'])
         self._sub_verification_seen = False
         self.send_log('订阅：'+account['name']+'；随后单独核分')
         self._sub_click(candidates[0]['button'])
-        self._sub_records()  # Detect an actual owner verification before leaving.
+        # The verification WebView may load after the tap has returned. Stay on
+        # this request until the named account is visibly followed; do not leave
+        # a blank/loading frame to check scores and cancel a pending follow.
+        saved=self._sub_wait(lambda rows:subscription_scene(rows)=='catalog' and any(
+            a['name']==account['name'] and a['state']=='已订阅' for a in subscription_accounts(rows)))
+        self._sub_evidence('follow-saved',saved)
+        if not self._sub_follow_saved(account['name']):
+            raise HumanRequired('关注未在我的订阅中保存；停止新增订阅，待本人处理')
+        self.send_log('已确认关注保存：'+account['name']+'；开始核分')
         after = self._sub_score()
         self.run_report.task('订阅',after=after)
         self._sub_evidence('score-after-follow',self._sub_records())
-        if (getattr(self, '_sub_verification_seen', False) and after['value'] == before['value']
-                and not self._sub_follow_saved(account['name'])):
-            raise HumanRequired('验证页已离开，但本次关注未确认保存；停止新增订阅，待本人处理')
         if after['maximum'] != before['maximum'] or after['value'] < before['value']:
             raise TaskIncomplete('订阅积分规则或分数发生异常变化，停止新增订阅')
         self.send_log(f"订阅核分：{before['value']}/{before['maximum']} → {after['value']}/{after['maximum']}")
@@ -273,14 +291,15 @@ class SubscriptionTasks:
 
     def _sub_follow_saved(self, name):
         self._sub_mine()
-        self._sleep(2)
-        records = self._sub_records()
+        records=self._sub_wait(lambda rows:subscription_scene(rows)=='mine' and any(
+            r['text'].strip()=='暂无更多内容' or
+            (175<=r['box'][1]<1175 and re.sub(r'\s+','',r['text'])==name) for r in rows))
         if subscription_scene(records) != 'mine':
             raise TaskIncomplete('验证后未确认我的订阅页面，保留待取消记录')
         matches = [r for r in records if 175 <= r['box'][1] < 1175
                    and re.sub(r'\s+','',r['text']) == name]
         if len(matches) == 1:
-            self.send_log('验证后已确认关注保存；本次未加分，继续其它候选')
+            self.send_log('已在我的订阅确认关注保存：'+name)
             return True
         if any(r['text'].strip() == '暂无更多内容' for r in records):
             return False

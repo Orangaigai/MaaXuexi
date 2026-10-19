@@ -140,6 +140,27 @@ class RecognitionTests(unittest.TestCase):
         self.assertIn('国学频道',names)
         self.assertNotIn('牌传播力榜榜首',names)
 
+    def test_actual_catalog_header_duplicate_character_does_not_change_scene(self):
+        records=[dict(text='強强国号',box=[246,66,80,35]),
+                 dict(text='地方平台',box=[365,66,103,33])]
+        self.assertEqual(subscription_scene(records),'catalog')
+
+    def test_catalog_words_in_article_body_are_not_catalog_tabs(self):
+        records=[dict(text='强国号',box=[246,566,80,35]),
+                 dict(text='地方平台',box=[365,566,103,33])]
+        self.assertIsNone(subscription_scene(records))
+
+    def test_white_active_category_needs_black_text_and_inactive_neighbor(self):
+        import numpy as np
+        records=[dict(text='党刊',box=[42,611,50,30]),dict(text='高校',box=[45,689,50,30])]
+        image=np.full((1280,720,3),243,dtype=np.uint8)
+        image[588:666,:140]=255
+        image[615:630,45:75]=20
+        self.assertTrue(category_selected(records,image,'党刊'))
+        self.assertFalse(category_selected(records,image,'高校'))
+        image[:,:140]=255
+        self.assertFalse(category_selected(records,image,'党刊'))
+
     def test_ambiguous_header_or_truncated_name_is_not_clicked(self):
         button=dict(text='订阅',box=[640,145,45,25])
         name=dict(text='频道',box=[215,144,80,25])
@@ -349,6 +370,7 @@ class FlowTests(unittest.TestCase):
         self.value._sub_records=Mock(return_value=records)
         self.value._sub_click=Mock(side_effect=lambda row:setattr(self.value,'_sub_verification_seen',True))
         self.value._sub_score=Mock(return_value=dict(value=0,maximum=2))
+        self.value._sub_wait=Mock(return_value=[dict(r,text='已订阅') if r['text']=='订阅' else r for r in records])
         self.value._sub_evidence=Mock();self.value._sub_follow_saved=Mock(return_value=True)
         after=self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
         self.assertEqual(after['value'],0)
@@ -361,9 +383,55 @@ class FlowTests(unittest.TestCase):
         self.value._sub_records=Mock(return_value=records)
         self.value._sub_click=Mock(side_effect=lambda row:setattr(self.value,'_sub_verification_seen',True))
         self.value._sub_score=Mock(return_value=dict(value=0,maximum=2))
+        self.value._sub_wait=Mock(return_value=[dict(r,text='已订阅') if r['text']=='订阅' else r for r in records])
         self.value._sub_evidence=Mock();self.value._sub_follow_saved=Mock(return_value=False)
         with self.assertRaises(HumanRequired):
             self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
+
+    def test_loading_after_follow_is_not_left_before_visible_saved_state(self):
+        before=[dict(text='强国号',box=[245,65,80,32]),dict(text='地方平台',box=[365,68,105,30]),
+                dict(text='频道',box=[215,144,80,25]),dict(text='订阅',box=[640,145,45,25])]
+        saved=[dict(r,text='已订阅') if r['text']=='订阅' else r for r in before]
+        self.value._sub_records=Mock(side_effect=[before,[],saved,saved])
+        self.value._sub_click=Mock();self.value._sub_evidence=Mock();self.value._sleep=Mock()
+        self.value._sub_follow_saved=Mock(return_value=True)
+        def score():
+            self.assertEqual(self.value._sub_records.call_count,3)
+            return dict(value=1,maximum=2)
+        self.value._sub_score=Mock(side_effect=score)
+        result=self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
+        self.assertEqual(result['value'],1)
+        self.value._sub_click.assert_called_once()
+
+    def test_unconfirmed_follow_never_leaves_to_score_or_sends_another_follow(self):
+        rows=[dict(text='强国号',box=[245,65,80,32]),dict(text='地方平台',box=[365,68,105,30]),
+              dict(text='频道',box=[215,144,80,25]),dict(text='订阅',box=[640,145,45,25])]
+        self.value._sub_records=Mock(return_value=rows);self.value._sub_click=Mock()
+        self.value._sub_wait=Mock(side_effect=TaskIncomplete('订阅页面未确认'))
+        self.value._sub_score=Mock()
+        with self.assertRaises(TaskIncomplete):
+            self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
+        self.value._sub_score.assert_not_called();self.value._sub_click.assert_called_once()
+        self.assertEqual(len(self.store.pending()),1)
+
+    def test_optimistic_follow_button_is_not_proof_of_saved_membership(self):
+        rows=[dict(text='强国号',box=[245,65,80,32]),dict(text='地方平台',box=[365,68,105,30]),
+              dict(text='频道',box=[215,144,80,25]),dict(text='订阅',box=[640,145,45,25])]
+        self.value._sub_records=Mock(return_value=rows);self.value._sub_click=Mock()
+        self.value._sub_wait=Mock(return_value=[dict(r,text='已订阅') if r['text']=='订阅' else r for r in rows])
+        self.value._sub_follow_saved=Mock(return_value=False);self.value._sub_score=Mock();self.value._sub_evidence=Mock()
+        with self.assertRaisesRegex(HumanRequired,'未在我的订阅中保存'):
+            self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
+        self.value._sub_score.assert_not_called()
+        self.value._sub_click.assert_called_once()
+
+    def test_my_subscription_header_alone_does_not_mean_membership_has_loaded(self):
+        header=[dict(text='我的订阅',box=[307,55,104,31]),dict(text='添加',box=[641,53,58,34])]
+        ready=header+[dict(text='频道',box=[105,200,120,25]),dict(text='已订阅',box=[622,223,75,26])]
+        self.value._sub_mine=Mock(return_value=header)
+        self.value._sub_records=Mock(side_effect=[header,ready]);self.value._sleep=Mock()
+        self.assertTrue(self.value._sub_follow_saved('频道'))
+        self.assertEqual(self.value._sub_records.call_count,2)
 
     def test_my_subscription_list_resumes_after_verification_without_browser_continue(self):
         from test_optimization import worker

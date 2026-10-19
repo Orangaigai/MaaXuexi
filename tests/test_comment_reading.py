@@ -25,6 +25,59 @@ ARTICLE = dict(title=TITLE, body='第一屏', scope=comment_tasks.COMMENT_SCOPE)
 
 
 class CommentReadingTests(unittest.TestCase):
+    def test_channel_heading_alone_waits_for_its_channel_grid(self):
+        import numpy as np
+        value=worker();value._sleep=Mock();value._comment_click=Mock()
+        value.tasker.controller.cached_image=np.zeros((1280,720,3),dtype=np.uint8)
+        heading=[row('全部频道',47,308)]
+        loaded=heading+[row('科普中国',577,571)]
+        value._screen_records=Mock(side_effect=[heading,loaded])
+        self.assertEqual(value._comment_channel_menu(heading),loaded)
+        self.assertEqual(value._screen_records.call_count,2)
+        value._comment_click.assert_not_called()
+
+    def test_channel_name_in_the_header_does_not_count_as_a_grid_entry(self):
+        import numpy as np
+        value=worker();value._sleep=Mock();value._comment_click=Mock()
+        value.tasker.controller.cached_image=np.zeros((1280,720,3),dtype=np.uint8)
+        loading=[row('全部频道',47,308),row('科普中国',125,25)]
+        loaded=[loading[0],row('科普中国',577,571)]
+        value._screen_records=Mock(side_effect=[loading,loaded])
+        self.assertEqual(value._comment_channel_menu(loading),loaded)
+        self.assertEqual(value._screen_records.call_count,2)
+
+    def feed_worker(self,titles):
+        value=worker();value._reset_home=Mock();value._sleep=Mock()
+        value._screen_records=Mock(return_value=[])
+        value._comment_channel_menu=Mock(return_value=[])
+        value._comment_label=Mock(return_value={})
+        value._comment_click=Mock();value._comment_life_feed=Mock(return_value=True)
+        value._comment_wait=Mock(side_effect=[[],[],FIRST])
+        value.detect=Mock(return_value=([[25,300,600,130]],['article']))
+        value._article_card_text=Mock(side_effect=titles)
+        return value
+
+    def test_used_first_three_feed_pages_do_not_hide_fourth_page_candidate(self):
+        used=['已发表过的第一篇生活文章','已发表过的第二篇生活文章','已发表过的第三篇生活文章']
+        value=self.feed_worker(used+[TITLE])
+        with patch('comment_tasks.CommentJournal') as journal:
+            journal.return_value.used_articles.return_value=used
+            self.assertEqual(value._comment_open_article()['title'],TITLE)
+        self.assertEqual(value.detect.call_count,4)
+        self.assertEqual(value.tasker.controller.post_swipe.call_count,3)
+        value.tasker.controller.post_input_text.assert_not_called()
+
+    def test_repeated_used_feed_stops_without_opening_or_publishing(self):
+        title='已发表过的一篇生活百科文章'
+        value=self.feed_worker([title,title])
+        with patch('comment_tasks.CommentJournal') as journal:
+            journal.return_value.used_articles.return_value=[title]
+            with self.assertRaises(TaskUnavailable):value._comment_open_article()
+        self.assertEqual(value.detect.call_count,2)
+        self.assertEqual(value._comment_click.call_count,2)  # Channel navigation only.
+        value.tasker.controller.post_swipe.assert_called_once()
+        value.tasker.controller.post_input_text.assert_not_called()
+
     def test_first_page_excludes_title_and_source(self):
         lines, end = article_page(FIRST, first=True)
         self.assertFalse(end)
@@ -93,6 +146,24 @@ class CommentReadingTests(unittest.TestCase):
         value._comment_article_bar = Mock(); value._sleep = Mock()
         value._comment_article_top(TITLE, 1)
         value.tasker.controller.post_swipe.assert_called_once_with(350, 350, 350, 1100, 600)
+
+    def test_actual_split_title_fragments_are_joined_on_the_same_line(self):
+        rows=[dict(text='识人“模板”',box=[23,189,208,39]),
+              dict(text='内隐人格理论',box=[283,191,219,36]),row('来源：科普中国',270)]
+        current=comment_tasks.comment_article(rows,require_body=False)
+        self.assertEqual(current['title'],'识人“模板”内隐人格理论')
+
+    def test_only_observed_separator_noise_is_ignored_in_title_identity(self):
+        self.assertEqual(comment_tasks.article_title_key('识人“模板”一一内隐人格理论'),
+                         comment_tasks.article_title_key('识人“模板”——内隐人格理论'))
+        self.assertIn('一一列举',comment_tasks.article_title_key('把事实一一列举清楚'))
+
+    def test_same_split_title_is_confirmed_without_repeated_scrolls(self):
+        rows=[dict(text='识人“模板”',box=[23,189,208,39]),
+              dict(text='内隐人格理论',box=[283,191,219,36]),row('来源：科普中国',270)]
+        value=self.value([rows])
+        value._comment_article_top('识人“模板”一一内隐人格理论',2)
+        value.tasker.controller.post_swipe.assert_not_called()
 
     def test_missing_article_bar_does_not_scroll_or_input(self):
         value = worker(); value._comment_ocr = Mock(return_value=[])

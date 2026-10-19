@@ -19,6 +19,7 @@ COMMENT_MODE = 'article_context_v1'
 COMMENT_SCOPE = '科普中国/生活百科'
 POLICY_PATH = Path('config/comment-policy.json')
 JOURNAL_PATH = Path('config/comments.sqlite3')
+COMMENT_FEED_PAGES = 10
 
 
 def comment_policy():
@@ -110,6 +111,9 @@ class CommentJournal:
 
 
 def article_title_key(text):
+    # OCR can read an em dash after a quoted title fragment as two Chinese ones.
+    # Keep ordinary occurrences of 一一 (such as 一一列举) unchanged.
+    text=re.sub(r'([”」』])\s*一一(?=[\u4e00-\u9fff])',r'\1—',text)
     return re.sub(r'\W+', '', text)
 
 
@@ -168,8 +172,22 @@ def comment_article(records, *, require_body=True):
                and re.match(r'^来源[：:]', r['text'].strip())]
     if len(sources) != 1:
         return None
-    titles = sorted((r for r in records if 150 <= r['box'][1] < min(300, sources[0]['box'][1]-15)
-                     and r['box'][0] < 100), key=lambda r:r['box'][1])
+    header=sorted((r for r in records if 150<=r['box'][1]<min(300,sources[0]['box'][1]-15)
+                   and 15<=r['box'][0]<700),key=lambda r:(r['box'][1],r['box'][0]))
+    lines=[]
+    for r in header:
+        if lines and abs(r['box'][1]-lines[-1][0]['box'][1])<=18:
+            lines[-1].append(r)
+        else:
+            lines.append([r])
+    titles=[]
+    for line in lines:
+        line.sort(key=lambda r:r['box'][0])
+        if line[0]['box'][0]>=100:
+            return None
+        left=min(r['box'][0] for r in line);top=min(r['box'][1] for r in line)
+        right=max(r['box'][0]+r['box'][2] for r in line);bottom=max(r['box'][1]+r['box'][3] for r in line)
+        titles.append(dict(text=''.join(r['text'] for r in line),box=[left,top,right-left,bottom-top]))
     if not 1 <= len(titles) <= 3:
         return None
     if any(abs(left['box'][0]-right['box'][0]) > 30
@@ -177,7 +195,7 @@ def comment_article(records, *, require_body=True):
            for left, right in zip(titles, titles[1:])):
         return None
     body = ''.join(r['text'] for r in sorted(records, key=lambda r:r['box'][1])
-                   if 250 <= r['box'][1] < 1100 and r not in titles)
+                   if 250 <= r['box'][1] < 1100 and r not in header)
     article = dict(title=''.join(r['text'] for r in titles), body=body, scope=COMMENT_SCOPE)
     if not require_body:
         return article if 4 <= len(article['title']) <= 150 else None
@@ -325,7 +343,12 @@ class CommentTasks:
             if not home_ready(records) and not self._comment_life_feed(records):
                 raise TaskIncomplete('尚未确认首页频道栏，不点击频道菜单')
             self._comment_click(dict(box=[615, 120, 38, 44]))
-        return self._comment_wait(lambda rs: any(r['text'].strip() == '全部频道' for r in rs))
+        # The menu heading can render before its channel grid. Wait for the
+        # actual next control too, rather than failing on that loading frame.
+        return self._comment_wait(lambda rs:
+            any(r['text'].strip() == '全部频道' and r['box'][1]<120 for r in rs)
+            and len([r for r in rs if r['text'].strip()=='科普中国'
+                     and 180<=r['box'][1]<1100])==1)
 
     def _comment_open_article(self):
         self._comment_life_selected = False
@@ -337,16 +360,19 @@ class CommentTasks:
         self._comment_click(self._comment_label(records, '生活百科', 180, 250))
         self._comment_wait(self._comment_life_feed)
         self._sleep(1)
-        for page in range(3):
+        seen_pages = set()
+        for page in range(COMMENT_FEED_PAGES):
             records = self._screen_records()
             self._guard_verification(records, resume_when=self._comment_resume_ready)
             if not self._comment_life_feed(records):
                 raise TaskIncomplete('未确认科普中国生活百科列表，未选择其他文章')
             boxes, kinds = self.detect()
+            titles = []
             for box, kind in zip(boxes, kinds):
                 if kind not in ('article', 'article_image') or not 250 <= box[1] < 1080:
                     continue
                 title = self._article_card_text(box)
+                titles.append(article_title_key(title))
                 if len(title) < 6 or any(s in title for s in ('直播', '专题', '订阅', '图集')):
                     continue
                 if comment_card_used(title, used_titles):
@@ -355,10 +381,15 @@ class CommentTasks:
                 self._comment_click(dict(box=[int(box[0])+20, int(box[1])+30, min(350, int(box[2])-20), 50]))
                 records = self._comment_wait(lambda rs: comment_article(rs, require_body=False) is not None, timeout=45)
                 return comment_article(records, require_body=False)
-            if page < 2:
+            signature = tuple(titles)
+            if signature and signature in seen_pages:
+                break
+            if signature:
+                seen_pages.add(signature)
+            if page < COMMENT_FEED_PAGES-1:
                 self.tasker.controller.post_swipe(350, 1090, 350, 550, 450).wait()
                 self._sleep(.7)
-        raise TaskUnavailable('生活百科未找到可确认正文的文章，本日不发表')
+        raise TaskUnavailable('生活百科本轮扫描未找到未使用且可确认正文的文章，未发表')
 
     def _comment_article_bar(self):
         self._check_active()
