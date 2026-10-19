@@ -86,8 +86,9 @@
   $('pointsCurrent').onclick=()=>{month='';selected='';load();};
   $('autoClose').onchange=async()=>{
     const chosen=$('autoClose').checked;if(saving)return;saving=true;$('autoClose').disabled=true;
-    try{const result=await request('/api/local/completion-options',{auto_close:chosen});$('autoClose').checked=result.auto_close;$('completionSettingMessage').textContent='已保存';}
-    catch(error){$('autoClose').checked=!chosen;$('completionSettingMessage').textContent=error.message;}
+    $('completionSettingMessage').dataset.tone='info';$('completionSettingMessage').textContent='保存中…';
+    try{const result=await request('/api/local/completion-options',{auto_close:chosen});$('autoClose').checked=result.auto_close;$('completionSettingMessage').dataset.tone='success';$('completionSettingMessage').textContent='已保存';}
+    catch(error){$('autoClose').checked=!chosen;$('completionSettingMessage').dataset.tone='error';$('completionSettingMessage').textContent=error.message;}
     finally{saving=false;$('autoClose').disabled=lastAction?.state==='closing';}
   };
   $('keepOpen').onclick=async()=>{
@@ -109,7 +110,7 @@
   window.addEventListener('maa:status',event=>{
     const health=event.detail;
     if(!health){
-      if(lastAction?.state==='closing'){$('status').textContent='任务已完成，积分记录已保存。查看记录时重新打开 MaaXuexi 即可。';$('connection').textContent='后台已关闭';}
+      if(lastAction?.state==='closing'){$('status').textContent='任务已完成，积分记录已保存。查看记录时重新打开 MaaXuexi 即可。';$('connection').textContent='后台已关闭';$('connection').dataset.state='closed';$('runtimeCard').classList.remove('is-offline');}
       return;
     }
     lastAction=health.completion_action||null;completion();

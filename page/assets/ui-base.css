@@ -34,6 +34,9 @@ button:hover:not(:disabled), .button:hover { border-color: #b7c8de; background: 
 .accent { background: var(--blue-soft); border-color: #dfe9f7; color: #275ca7; }
 .quiet { background: transparent; border-color: transparent; color: #5c6c82; }
 .compact { min-height: 34px; padding: 5px 12px; font-size: 12px; }
+.text-button { min-height: 28px; padding: 3px 6px; border: 0; border-radius: 5px; color: var(--blue); background: transparent; font-size: 11px; }
+.is-busy::before { content: ''; display: inline-block; width: 12px; height: 12px; flex: 0 0 12px; border: 1.5px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: busy-spin .8s linear infinite; }
+@keyframes busy-spin { to { transform: rotate(360deg); } }
 .danger { border-color: #eddad5; color: #a44130; }
 .danger:hover:not(:disabled) { border-color: #d6aaa0; background: #fff7f5; }
 button:disabled { background: #f5f7fa; border-color: #e7ecf2; color: #8c98a9; cursor: default; box-shadow: none; }
@@ -45,9 +48,12 @@ input:disabled { color: #8390a2; border-color: #e3e9f1; background: #f7f9fc; cur
 .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 6px; background: var(--blue-soft); color: #3d6395; font-size: 11px; line-height: 1.6; white-space: nowrap; }
 .badge.ready { background: #edf7f1; color: var(--green); }
 .badge.attention { background: #fff5e6; color: var(--amber); }
-.feedback { margin-top: 10px; font-size: 12px; color: #93531c; overflow-wrap: anywhere; }
+.feedback { margin-top: 10px; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .feedback:empty { display: none; }
+[data-tone=success] { color: var(--green); }
+[data-tone=error] { color: #a44130; }
+[data-tone=info] { color: var(--muted); }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; }
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }

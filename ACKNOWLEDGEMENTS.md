@@ -17,4 +17,7 @@
 - [Tabler](https://github.com/tabler/tabler)的页面头部与信息层级、[Ant Design布局规范](https://ant.design/docs/spec/layout/)的间距节奏，以及[shadcn/ui](https://ui.shadcn.com/examples/dashboard)、[Soybean Admin](https://github.com/soybeanjs/soybean-admin)、[Vben Admin](https://github.com/vbenjs/vue-vben-admin)的管理台布局，用于评估宽屏布局与表单细节；沿用本项目原生页面实现，不引入这些项目的代码或运行依赖。
 - [Tabler键盘焦点反馈](https://github.com/tabler/tabler/issues/2662)及[布局间距反馈](https://github.com/tabler/tabler/issues/2500)：界面调整同时检查选中态、焦点、窄屏和异常状态，避免只验收静态外观。
 
+- [Dagu Web UI](https://docs.dagu.sh/getting-started/quickstart)、[Uptime Kuma](https://github.com/louislam/uptime-kuma)及[Homepage状态反馈](https://github.com/gethomepage/homepage/discussions/2368)：借鉴任务状态、历史记录与连接状态分开呈现的思路。
+- [保存状态反馈](https://github.com/n8n-io/n8n/issues/25359)和[界面持续加载反馈](https://github.com/n8n-io/n8n/issues/28096)：以实际编辑值判断未保存状态，操作请求结束后及时恢复界面。本项目自行实现对应交互，不引入相关项目代码。
+
 这些设计资料和社区讨论用于借鉴，不代表其维护者参与、认证或推荐本项目。

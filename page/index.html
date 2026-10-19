@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>MaaXuexi · 任务控制台</title>
-  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261019.13">
-  <link rel="stylesheet" href="/assets/console.css?v=local-20261019.13">
+  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261019.14">
+  <link rel="stylesheet" href="/assets/console.css?v=local-20261019.14">
 </head>
 <body>
 <main>
@@ -17,10 +17,11 @@
     <section class="card runtime-card" id="runtimeCard" aria-labelledby="runtimeHeading">
       <div class="section-heading"><h2 id="runtimeHeading"><span class="status-mark" aria-hidden="true"></span>运行状态</h2><span id="runMode" class="badge">读取执行方式…</span></div>
       <div id="status" role="status" aria-live="polite">正在读取任务状态…</div>
+      <div id="runProgressBlock" class="run-progress" hidden><div><span>本轮进度</span><span id="runProgressCount"></span></div><progress id="runProgress" value="0" max="1" aria-label="已确认的任务项数"></progress></div>
       <div class="bar runtime-actions"><button id="pause" hidden>暂停</button><button id="resume" class="primary" hidden>继续执行</button><button id="stop" class="danger" hidden>中止任务</button><select id="device" hidden aria-label="选择模拟器"></select><button id="connect" hidden>连接模拟器</button></div>
       <p id="runMessage" class="feedback" role="status" aria-live="polite"></p>
       <div id="completionBanner" class="completion-banner" hidden><span id="completionMessage" role="status"></span><button id="keepOpen" class="compact">本次保持打开</button></div>
-      <span id="version" class="version muted"></span>
+      <div class="runtime-meta"><span id="runMeta" class="muted"></span><span id="version" class="version muted"></span></div>
     </section>
     <section class="card provider-card" aria-labelledby="providerHeading">
       <div class="section-heading provider-title"><h2 id="providerHeading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="8" cy="9" r="4"/><path d="m11 12 8 8m-4-4 2-2m0 4 2-2"/></svg>DeepSeek 答题服务</h2><span id="provider" class="badge">读取中</span></div>
@@ -30,7 +31,7 @@
   </div>
   <div class="control-layout">
   <section class="card task-card" aria-labelledby="taskHeading">
-    <div class="section-heading"><h2 id="taskHeading" tabindex="-1"><span class="step-number" aria-hidden="true">1</span>任务清单</h2><div class="section-meta"><span id="taskSelectionCount"></span><span id="taskEditState" class="schedule-edit">读取中</span></div></div>
+    <div class="section-heading"><h2 id="taskHeading" tabindex="-1"><span class="step-number" aria-hidden="true">1</span>任务清单</h2><div class="section-meta"><span id="taskSelectionCount"></span><span id="taskEditState" class="schedule-edit">读取中</span><button id="taskReset" class="text-button" hidden disabled aria-label="还原为已保存的任务清单">还原</button></div></div>
     <p class="section-description">选择本次任务；保存后，下次会沿用这份清单。</p>
     <div id="choices" class="task-grid" role="group" aria-labelledby="taskHeading">
       <section class="task-group" aria-labelledby="basicTaskHeading">
@@ -55,7 +56,7 @@
     </fieldset>
     <div id="manualPanel" class="manual-panel" hidden><p>定时启动已关闭。点击上方“立即执行”运行所选任务。</p></div>
     <div id="schedulePanel" class="schedule-divider" role="region" aria-labelledby="scheduleHeading" hidden>
-      <div class="section-heading"><div class="bar"><h3 id="scheduleHeading">定时设置</h3><span class="timezone">北京时间</span></div><span id="scheduleEditState" class="schedule-edit">读取中</span></div>
+      <div class="section-heading"><div class="bar"><h3 id="scheduleHeading">定时设置</h3><span class="timezone">北京时间</span></div><div class="section-meta"><span id="scheduleEditState" class="schedule-edit">读取中</span><button id="scheduleReset" class="text-button" hidden disabled aria-label="还原为已保存的定时设置">还原</button></div></div>
       <p id="schedule" class="section-description">正在读取定时计划…</p>
       <fieldset class="schedule-options"><legend class="sr-only">选择每日启动时间</legend>
         <div class="schedule-option">
@@ -71,7 +72,7 @@
       </fieldset>
       <div class="schedule-footer">
         <div class="schedule-save"><button id="scheduleSave" class="accent" disabled>保存定时</button><p id="scheduleMessage" class="feedback" role="status" aria-live="polite"></p></div>
-        <div class="schedule-next"><span class="muted">距离下次执行</span><strong id="scheduleCountdown" role="timer" aria-live="off">正在读取…</strong><span id="scheduleNextTime" class="muted"></span></div>
+        <div class="schedule-next"><span id="scheduleNextLabel" class="muted">距离下次执行</span><strong id="scheduleCountdown" role="timer" aria-live="off">正在读取…</strong><span id="scheduleNextTime" class="muted"></span></div>
       </div>
       <p class="muted schedule-requirements" id="scheduleCatchup">电脑需要开机、登录 Windows、未休眠且联网；关闭网页不停止任务。</p>
     </div>
