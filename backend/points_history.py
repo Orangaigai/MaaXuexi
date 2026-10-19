@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import re
 import sqlite3
+from history_ledger import LedgerStore
 
 from task_support import ALIASES
 
@@ -25,7 +26,7 @@ def clean_scores(scores):
             and 0 <= row['value'] <= row['maximum'] <= 100 and row['maximum'] > 0}
 
 
-class PointsHistory:
+class PointsHistory(LedgerStore):
     def __init__(self, path=None):
         self.path = Path(path) if path is not None else HISTORY_PATH
 
@@ -55,6 +56,15 @@ class PointsHistory:
                         day TEXT NOT NULL, task TEXT NOT NULL, state TEXT NOT NULL,
                         reason TEXT NOT NULL, mode TEXT NOT NULL, observed_at TEXT NOT NULL,
                         PRIMARY KEY(day,task)
+                    );
+                    CREATE TABLE IF NOT EXISTS ledger_days (
+                        day TEXT PRIMARY KEY,points INTEGER NOT NULL,entries INTEGER NOT NULL,
+                        observed_at TEXT NOT NULL,source TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS score_transactions (
+                        day TEXT NOT NULL,position INTEGER NOT NULL,time TEXT NOT NULL,
+                        name TEXT NOT NULL,points INTEGER NOT NULL,only_total INTEGER NOT NULL,
+                        observed_at TEXT NOT NULL,PRIMARY KEY(day,position)
                     );
                 ''')
                 yield db
@@ -163,6 +173,7 @@ class PointsHistory:
             runs = db.execute('SELECT * FROM runs WHERE day LIKE ? ORDER BY started_at,run_id', (month+'-%',)).fetchall()
             results = db.execute('SELECT * FROM task_results WHERE day LIKE ?', (month+'-%',)).fetchall()
             totals = db.execute('SELECT * FROM daily_totals WHERE day LIKE ?', (month+'-%',)).fetchall()
+            ledgers = db.execute('SELECT * FROM ledger_days WHERE day LIKE ?', (month+'-%',)).fetchall()
             today_points = db.execute('SELECT SUM(value) FROM scores WHERE day=?', (today,)).fetchone()[0]
         days = {}
         for run in runs:
@@ -179,9 +190,16 @@ class PointsHistory:
         for row in totals:
             day = days.setdefault(row['day'], dict(day=row['day'], tasks={}, runs=0, status='observed'))
             day.update(points=row['points'], points_source='xuexi_points_detail', total_observed_at=row['observed_at'])
+        for row in ledgers:
+            if row['day'] in days:
+                day = days[row['day']]
+                day['ledger'] = dict(entries=row['entries'],points=row['points'],source=row['source'],
+                                     matches_total=row['points']==day.get('points'))
         for day in days.values():
             if day.get('points_source') != 'xuexi_points_detail':
                 day['points'] = sum(row['value'] for row in day['tasks'].values()) if day['tasks'] else None
+            if day.get('ledger'):
+                day['ledger']['matches_total'] = day['ledger']['points']==day['points']
             day['known_tasks'] = len(day['tasks'])
             day['complete_snapshot'] = len(day['tasks']) == len(ALIASES)
         return dict(month=month, today=today, today_points=today_points, timezone='Asia/Shanghai', days=sorted(days.values(), key=lambda row: row['day']),

@@ -20,6 +20,7 @@
 | `runtime_doctor.py` | 按需只读汇总配置检查，不发起付费模型测试 |
 | `points_history.py` | 按北京时间保存实际积分与任务结果，同日更新快照；提供月历和日期详情 |
 | `history_reader.py` / `history_import.py` | 独立历史读取、双向 OCR 核对、导入状态及首次选择；不创建每日任务报告或调用模型 |
+| `ledger_reading.py` / `history_ledger.py` | 手机端逐日流水读取、重叠拼接、正反两遍及总分对账、SQLite 日快照 |
 | `completion_actions.py` | 完成后倒计时、取消及后台退出协调；未完成或保存失败时保留现场 |
 | `Control-Browser.ps1` / `Finish-Session.ps1` | 独立控制台窗口归属核对、指定模拟器实例关闭与资源收尾 |
 
@@ -37,9 +38,16 @@
 | `POST /api/local/history-import` | 启动导入；已有导入时返回同一作业，学习任务运行时拒绝 |
 | `POST /api/local/history-import/cancel` | 请求取消，写库阶段不可中断 |
 | `POST /api/local/history-import/skip` | 记住“从今天开始记录”，不删历史、不运行任务 |
+| `GET /api/local/points-ledger?day=YYYY-MM-DD` | 按日期延迟读取已导入的原始流水；未导入为 `available: false` |
 
-POST 使用空 JSON 对象。`/api/status` 同时携带 `history_import`，页面刷新后可恢复进度。首次选择与最近作业保存在私有 `config/history-import.json`；重启时把未结束作业标为中断，不自动制造成功结果。积分仍保存在原 SQLite 库中，历史日总分只写 `daily_totals`，不伪造 `runs` 或 `task_results`。
+启动 POST 使用 `{"include_details": false}`（默认，也兼容空 JSON）或 `{"include_details": true}`。只接受布尔值，未知字段拒绝。页面完整导入必须先经过确认弹窗；快速导入不调用逐日流水读取器。其它 POST 使用空 JSON。`/api/status` 同时携带 `history_import`，页面刷新后可恢复进度。首次选择与最近作业保存在私有 `config/history-import.json`；重启时把未结束作业标为中断，不自动制造成功结果。
 
-当前阅读通道是现有 MaaFramework/MuMu 的截图与本机 OCR，使用两次反向完整扫描交叉核对。官方公开 H5 定义了 `getDaysScore`，但调用依赖 App 内的已登录 LWP 桥；没有把接口名称或页面静态文件当作已经接通的原始数据接口。实现没有提取登录凭证、启用 App 调试或增加模型调用。
+积分仍保存在原 SQLite 库中：`daily_totals` 保存日总分，`ledger_days` 保存已对账日元数据，`score_transactions` 按 `(day, position)` 保存有序明细。不按文本去重，保留同一分钟的多笔相同积分。重导以完整日快照替换，不累加；旧观察不覆盖新观察。未取得的流水不从任务上限推算，不伪造 `runs` 或 `task_results`。月接口仅附带流水摘要，用户选择日期后再读取明细。
+
+图表总分正反核对，逐日明细的相邻画面必须重叠，正向和反向的完整有序记录必须一致，且明细分数合计必须与该日总分相符，才保存该日。单日未核实会报告部分导入，不将空白当作零分。采集器使用独立控制器、空模型密钥和取消事件；快速读取上限 4 分钟，含明细上限 20 分钟，平台验证最多等待 2 分钟。定时执行可等待导入结束，避免两个流程同时操控设备。
+
+OCR 行解析保留时间、项目与实际分值：装饰性引号和空白归一化，名称与末尾分值被合并识别时按文本及位置拆分；临近底边的文字延后到下一幅完整画面读取。不用模糊名称匹配或凭总分补造缺失流水。单日识别未一致时完整重读一次，第二次仍失败则报告未核实；取消、登录及平台验证不进入这种重读。
+
+当前阅读通道是现有 MaaFramework/MuMu 的截图与本机 OCR。官方公开 H5 定义了 `getDaysScore` 和 `queryScoreDetailByPage`，但调用依赖 App 内的已登录 LWP 桥；尚无已接通并验收的手机端结构化通道。没有把接口名称或静态文件当作已经取得个人记录，也不要求额外官网登录。实现没有提取登录凭证、启用 App 调试或增加模型调用。后续优先项见[读取限制与改进计划](roadmap.md)。
 
 此功能沿用单个本机账号配置。切换学习强国账号前应使用独立安装目录与积分库，当前不能自动隔离多个账号的历史。

@@ -34,6 +34,10 @@ class CompletionOptions(BaseModel):
     auto_close: StrictBool
     model_config = ConfigDict(extra='forbid')
 
+class HistoryImportOptions(BaseModel):
+    include_details: StrictBool = False
+    model_config = ConfigDict(extra='forbid')
+
 class ConfigModel(BaseModel):
     api_key: SecretStr = SecretStr('')
     model: str = MODEL
@@ -78,9 +82,10 @@ class AppState:
         self.shutdown = lambda: None
         self.shutting_down = False
 
-    def collect_history(self, progress, cancel):
+    def collect_history(self, progress, cancel, *, include_details=False):
         from history_reader import collect_platform_history
-        return collect_platform_history(self.message_conn, progress, cancel)
+        return collect_platform_history(self.message_conn, progress, cancel, self.points.ledger_index(),
+                                        include_details=include_details)
 
 app_state = AppState()
 
@@ -235,6 +240,16 @@ def get_completion_options():
     return read_options()
 
 
+@app.get('/api/local/points-ledger')
+def get_points_ledger(day: str):
+    try:
+        return app_state.points.ledger_day(day)
+    except ValueError as error:
+        raise HTTPException(422,str(error)) from error
+    except (OSError,sqlite3.Error) as error:
+        raise HTTPException(503,'积分流水暂不可用，请稍后重试。') from error
+
+
 @app.get('/api/local/history-import')
 def history_import_status():
     return app_state.history_import.snapshot()
@@ -251,14 +266,14 @@ def skip_history_import():
 
 
 @app.post('/api/local/history-import')
-def start_history_import():
+def start_history_import(options: HistoryImportOptions = HistoryImportOptions()):
     with app_state.lock:
         if task_running():
             raise HTTPException(409, '学习任务执行中，请结束后再导入历史积分。')
         if not app_state.completion.cancel():
             raise HTTPException(409, '正在关闭窗口，请重新打开控制台后再导入。')
         try:
-            return dict(status='success', **app_state.history_import.start())
+            return dict(status='success', **app_state.history_import.start(include_details=options.include_details))
         except OSError as error:
             raise HTTPException(503, '导入状态未能保存，请检查本机磁盘后重试。') from error
 

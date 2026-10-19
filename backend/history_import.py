@@ -54,14 +54,14 @@ class HistoryImport:
             self._save()
             return self.snapshot()
 
-    def start(self):
+    def start(self, *, include_details=False):
         with self.lock:
             if self.running:
                 return self.snapshot()
             self.cancel_event = threading.Event()
             self.data['job'] = dict(id=uuid.uuid4().hex[:16], phase='preparing',
                 message='正在准备导入', started_at=beijing_time().isoformat(), read_days=0,
-                cancel_requested=False)
+                cancel_requested=False, include_details=include_details)
             self._save()
             self.thread = threading.Thread(target=self._run, daemon=True, name='points-history-import')
             self.thread.start()
@@ -87,21 +87,25 @@ class HistoryImport:
 
     def _run(self):
         try:
-            result = self.reader(self._progress, self.cancel_event)
+            options = dict(include_details=True) if self.data['job']['include_details'] else {}
+            result = self.reader(self._progress, self.cancel_event, **options)
             self._progress('saving', '正在保存已核实的积分记录')
             counts = self.store.import_daily_totals(result['rows'], return_counts=True)
+            ledger_counts = self.store.import_day_ledgers(result.get('ledgers',[]))
             # The reader records these scores before scanning history; an older
             # observation cannot replace a newer same-day live observation.
             if result.get('current_scores'):
                 self.store.observe(result['current_scores'], observed_at=result['current_observed_at'])
             with self.lock:
-                unconfirmed = result.get('unconfirmed_days', 0)
+                unconfirmed = result.get('unconfirmed_days', 0)+len(result.get('unconfirmed_ledgers',[]))
                 phase = 'partial' if unconfirmed else 'completed'
                 self.data['job'].update(phase=phase, finished_at=beijing_time().isoformat(),
                     message='部分日期尚未核实，可重新导入补齐。' if unconfirmed else '历史积分已导入。',
                     counts=counts, read_days=result['read_days'], saved_days=len(result['rows']),
-                    unconfirmed_days=unconfirmed, date_from=result['date_from'], date_to=result['date_to'],
-                    source=result['source'])
+                    unconfirmed_days=result.get('unconfirmed_days',0), date_from=result['date_from'], date_to=result['date_to'],
+                    source=result['source'],ledger_counts=ledger_counts,
+                    cached_ledger_days=result.get('cached_ledger_days',0),
+                    unconfirmed_ledgers=result.get('unconfirmed_ledgers',[]))
                 if not unconfirmed:
                     self.data['choice'] = 'imported'
         except TaskCancelled:

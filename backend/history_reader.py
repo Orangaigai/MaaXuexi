@@ -192,10 +192,10 @@ class HistoryReaderMixin:
             raise TaskIncomplete('历史图表没有到达可确认的边界，已停止本次读取。')
         return {day: points for day, points in result.items() if day not in conflicting}
 
-    def collect(self, progress, cancel):
+    def collect(self, progress, cancel, *, include_details=False):
         self.history_progress, self.history_cancel = progress, cancel
         self.history_date = datetime.now(BEIJING).date()
-        self.history_deadline = time.monotonic() + 240
+        self.history_deadline = time.monotonic() + (1200 if include_details else 240)
         self.run_report = None
         self.stop_flag = False
         try:
@@ -203,6 +203,8 @@ class HistoryReaderMixin:
             all_days = set()
             first = self._history_pass(True, all_days)
             second = self._history_pass(False, all_days)
+            if first.keys()!=second.keys():
+                first = self._history_pass(True, all_days)
             verified = confirmed_history(first, second)
             if verified.get(self.history_date.isoformat()) != platform_today:
                 raise TaskIncomplete('图表今日总分与当日积分不一致，未保存本次历史读取。')
@@ -211,19 +213,23 @@ class HistoryReaderMixin:
                     if day < self.history_date.isoformat()]
             if not rows and len(all_days) > 1:
                 raise TaskIncomplete('没有往日记录通过两轮核对，原有积分记录保留。')
+            details = self._read_history_ledgers(verified) if include_details else {}
             if history_page(self._history_records()):
                 self._history_back()
             return dict(rows=rows, current_scores=current, current_observed_at=observed,
                 read_days=len(all_days), unconfirmed_days=len(all_days - verified.keys()),
-                date_from=min(verified), date_to=max(verified), source='screen_ocr_verified')
+                date_from=min(verified), date_to=max(verified), source='screen_ocr_verified',**details)
         finally:
             self.tasker.post_stop()
             self.ai_resolver.session.close()
 
 
-def collect_platform_history(queue, progress, cancel):
+def collect_platform_history(queue, progress, cancel, ledger_cache=None, *, include_details=False):
     from utils import MaaWorker
     from provider_support import MODEL
-    class HistoryWorker(HistoryReaderMixin, MaaWorker):
+    from ledger_reading import LedgerReading
+    class HistoryWorker(LedgerReading, HistoryReaderMixin, MaaWorker):
         pass
-    return HistoryWorker(queue, api_key='', model=MODEL).collect(progress, cancel)
+    worker = HistoryWorker(queue, api_key='', model=MODEL)
+    worker.ledger_cache = ledger_cache or {}
+    return worker.collect(progress, cancel, include_details=include_details)

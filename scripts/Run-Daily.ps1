@@ -53,7 +53,7 @@ try {
     try { $health = Invoke-RestMethod ($baseUrl+'/api/status') -TimeoutSec 5 } catch { }
     if ($health.history_import.active) {
         Write-RunLog 'Waiting for the local points import before starting learning tasks.'
-        $importDeadline = (Get-Date).AddMinutes(5)
+        $importDeadline = (Get-Date).AddMinutes(21)
         while ($health.history_import.active) {
             if ((Get-Date) -ge $importDeadline) { throw 'Points import is still active. No conflicting learning task was submitted.' }
             Start-Sleep -Seconds 2

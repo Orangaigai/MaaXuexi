@@ -23,3 +23,5 @@
 这些设计资料和社区讨论用于借鉴，不代表其维护者参与、认证或推荐本项目。
 
 历史导入的交互另参考 [Karakeep 按作业跟踪导入进度](https://github.com/karakeep-app/karakeep/pull/2950)、[导入最后一项持续等待的用户反馈](https://github.com/karakeep-app/karakeep/issues/2208)和 [Actual Budget 的导入去重说明](https://actualbudget.org/docs/transactions/importing/)：刷新保留同一作业、明确成功和失败状态，并按本项目的日期键合并分数。只借鉴交互和数据处理原则，没有复制相关项目代码或引入依赖。
+
+三种导入选择和耗时确认参考 [Carbon 对话框规范](https://www.carbondesignsystem.com/building-blocks/core/components/modal/guidelines)：把读取方式、时间、费用和具体执行按钮放在同一确认框，取消或按 Esc 不执行。使用浏览器原生 dialog，不增加界面框架依赖。

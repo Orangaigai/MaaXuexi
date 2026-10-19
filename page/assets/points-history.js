@@ -8,6 +8,8 @@
     stopped:'已中止',needs_human:'待本人处理',deferred:'待继续'};
   const done=new Set(['skipped_full','verified','credited']);
   let month='',selected='',data=null,reading=false,revision=0,lastRun='',lastAction=null,saving=false,optionsLoaded=false;
+  let ledgerRevision=0,ledgerKey='';
+  const ledgerCache=new Map();
   async function request(path,body){
     const response=await fetch(path,{cache:'no-store',signal:AbortSignal.timeout(10000),
       ...(body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
@@ -23,7 +25,7 @@
     $('pointsDayState').textContent=row?states[row.status]||'已记录':'暂无记录';
     $('pointsDayState').className='badge'+(row?.status==='completed'?' ready':row&&!['observed','running'].includes(row.status)?' attention':'');
     $('pointsDayHint').textContent=!row?'这天还没有积分记录。':row.points===null?'尚未读到积分，已保留运行结果。':
-      row.points_source==='xuexi_points_detail'?`已核实 ${row.points} 分 · 平台历史记录`+(row.known_tasks?'':'，未导入逐项明细。'):
+      row.points_source==='xuexi_points_detail'?`已核实 ${row.points} 分 · 平台历史记录`+(row.ledger?.matches_total?' · 流水已对账':row.known_tasks?'':'，未导入逐项明细。'):
       `已核实 ${row.points} 分`+(row.complete_snapshot?'':` · ${row.known_tasks}项任务`);
     $('pointsTaskDetails').replaceChildren();
     for(const name of names){
@@ -43,6 +45,43 @@
       }
       $('pointsTaskDetails').append(group);
     }
+    loadLedger(row);
+  }
+  function ledgerGroup(name){
+    if(/文章|选读/.test(name))return '选读文章';
+    if(/视听/.test(name))return '视听学习';
+    if(/^订阅/.test(name))return '订阅';
+    if(/挑战|趣味|双人|四人/.test(name))return '趣味答题';
+    return name;
+  }
+  async function loadLedger(row){
+    const key=selected+'|'+JSON.stringify(row?.ledger||null);
+    if(key===ledgerKey)return;
+    ledgerKey=key;const ticket=++ledgerRevision;
+    $('pointsLedger').hidden=!row?.ledger;$('ledgerEntries').replaceChildren();$('ledgerSummary').replaceChildren();
+    $('ledgerDetails').open=false;
+    if(!row?.ledger)return;
+    $('ledgerMessage').textContent='正在读取积分流水…';$('ledgerDetails').hidden=true;
+    try{
+      let value=ledgerCache.get(key);
+      if(!value){value=await request('/api/local/points-ledger?day='+encodeURIComponent(selected));ledgerCache.set(key,value);}
+      if(ticket!==ledgerRevision)return;
+      if(!value.available){$('ledgerMessage').textContent='这天尚未导入积分流水。';return;}
+      $('ledgerMessage').textContent=row.ledger.matches_total?'积分来源已与当日总分核对。':'流水与当前总分有差异，需重新导入核对。';
+      $('ledgerTitle').textContent=`查看 ${value.entries.length} 笔积分流水`;
+      const groups=new Map();
+      for(const entry of value.entries){
+        const name=ledgerGroup(entry.name);groups.set(name,(groups.get(name)||0)+entry.points);
+        const item=document.createElement('li'),time=document.createElement('time'),label=document.createElement('span'),points=document.createElement('strong');
+        time.textContent=entry.time;label.textContent=entry.name;label.className='ledger-name';
+        points.textContent=(entry.points>0?'+':'')+entry.points+'分';item.append(time,label,points);$('ledgerEntries').append(item);
+      }
+      if(!row.known_tasks)for(const[name,points]of groups){
+        const group=document.createElement('div'),title=document.createElement('dt'),value=document.createElement('dd');
+        title.textContent=name;value.textContent=points+'分';group.append(title,value);$('ledgerSummary').append(group);
+      }
+      $('ledgerDetails').hidden=false;
+    }catch(error){if(ticket===ledgerRevision)$('ledgerMessage').textContent=error.message;}
   }
   function render(){
     const [year,number]=data.month.split('-').map(Number);
@@ -121,7 +160,7 @@
     if(key!==lastRun&&!reading){lastRun=key;load();}
   });
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!reading)load();});
-  window.addEventListener('maa:points-changed',()=>load());
+  window.addEventListener('maa:points-changed',()=>{ledgerCache.clear();ledgerKey='';load();});
   request('/api/local/completion-options').then(result=>{optionsLoaded=true;$('autoClose').checked=result.auto_close;$('autoClose').disabled=lastAction?.state==='closing';})
     .catch(error=>{$('completionSettingMessage').textContent=error.message;});
   load();setInterval(()=>{if(!document.hidden)completion();},1000);
