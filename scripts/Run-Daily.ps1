@@ -51,6 +51,15 @@ try {
     } catch { Write-RunLog 'Could not update the next automatic time; existing Windows trigger retained. Check the schedule panel.' }
     $health = $null
     try { $health = Invoke-RestMethod ($baseUrl+'/api/status') -TimeoutSec 5 } catch { }
+    if ($health.history_import.active) {
+        Write-RunLog 'Waiting for the local points import before starting learning tasks.'
+        $importDeadline = (Get-Date).AddMinutes(5)
+        while ($health.history_import.active) {
+            if ((Get-Date) -ge $importDeadline) { throw 'Points import is still active. No conflicting learning task was submitted.' }
+            Start-Sleep -Seconds 2
+            $health = Invoke-RestMethod ($baseUrl+'/api/status') -TimeoutSec 5
+        }
+    }
     if ($health -and $health.task_running) {
         if (!$NoBrowser) {
             try { & (Join-Path $appRoot 'scripts\Start-MaaXuexi.ps1') }

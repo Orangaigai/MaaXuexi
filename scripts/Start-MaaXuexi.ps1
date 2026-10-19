@@ -95,7 +95,7 @@ function Test-ActiveLocalTask([switch]$AllowTransientFailure) {
     if ($current.status -ne 'running' -or $current.backend -ne 'deepseek-local') {
         throw 'The local MaaXuexi backend is not ready.'
     }
-    return [bool]($current.task_running -or $current.paused)
+    return [bool]($current.task_running -or $current.paused -or $current.history_import.active)
 }
 
 function Connect-DeviceWhenIdle($Device) {
@@ -273,16 +273,16 @@ try {
         if ($health) {
             if ($health.status -ne 'running') { throw 'The existing process is not ready. Stop it and try again.' }
             if ($health.backend -ne 'deepseek-local') { throw 'The original backend is running. Stop MaaXuexi, then start it again.' }
-            if (!$health.task_running -and $health.local_version -ne $expectedLocalVersion) {
+            if (!$health.task_running -and !$health.history_import.active -and $health.local_version -ne $expectedLocalVersion) {
                 Write-Host 'Loading the updated local backend. The current task has ended.'
                 & (Join-Path $appRoot 'scripts\Stop-MaaXuexi.ps1')
                 if ($LASTEXITCODE -ne 0) { throw 'Could not stop the previous local backend.' }
                 Wait-BackendPortFree
             } else {
                 Open-ControlPage
-                if (!$health.task_running -and !(Test-ViewCompletedDay $health)) { Connect-ConfiguredEmulator }
+                if (!$health.task_running -and !$health.history_import.active -and !(Test-ViewCompletedDay $health)) { Connect-ConfiguredEmulator }
                 Write-Host 'MaaXuexi is already running: http://127.0.0.1:8000/'
-                if ($health.task_running -and $health.local_version -ne $expectedLocalVersion) { Write-Host 'The active task is preserved; the update will load on the next idle startup.' }
+                if (($health.task_running -or $health.history_import.active) -and $health.local_version -ne $expectedLocalVersion) { Write-Host 'The active task is preserved; the update will load on the next idle startup.' }
                 exit 0
             }
         } else { Wait-BackendPortFree }

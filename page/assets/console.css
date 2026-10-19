@@ -309,3 +309,15 @@ pre { max-height: 310px; overflow: auto; white-space: pre-wrap; overflow-wrap: a
   .calendar-day > strong { padding: 0 3px; font-size: 11px; }
   .utility-card { padding: 0; }
 }
+.history-import { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin: 0 0 24px; padding: 20px 22px; border-radius: 12px; background: linear-gradient(110deg,#eef5ff,#f7faff); }
+.history-import-copy { min-width: 0; }
+.history-import h3 { margin: 0 0 6px; font-size: 16px; font-weight: 650; }
+.history-import p { margin: 5px 0 0; font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
+.history-import #historyImportHint { font-size: 12px; }
+.history-import .feedback:empty { display: none; }
+.history-import-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; flex-shrink: 0; }
+.history-import-actions .compact { font-size: 13px; white-space: nowrap; }
+.history-import progress { display: block; width: min(320px,100%); height: 5px; margin-top: 12px; accent-color: var(--blue); }
+.history-import.is-result { padding-top: 16px; padding-bottom: 16px; }
+@media (max-width: 960px) { .history-import { align-items: flex-start; flex-direction: column; gap: 14px; } .history-import-actions { justify-content: flex-start; } }
+@media (max-width: 420px) { .history-import { padding: 16px; } .history-import-actions { width: 100%; } .history-import-actions button { flex: 1 1 auto; } }

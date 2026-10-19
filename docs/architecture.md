@@ -19,9 +19,27 @@
 | `diagnostics.py` / `runtime_logs.py` / `log_retention.py` | 有限诊断现场、日志写队列、已知日志保守保留 |
 | `runtime_doctor.py` | 按需只读汇总配置检查，不发起付费模型测试 |
 | `points_history.py` | 按北京时间保存实际积分与任务结果，同日更新快照；提供月历和日期详情 |
+| `history_reader.py` / `history_import.py` | 独立历史读取、双向 OCR 核对、导入状态及首次选择；不创建每日任务报告或调用模型 |
 | `completion_actions.py` | 完成后倒计时、取消及后台退出协调；未完成或保存失败时保留现场 |
 | `Control-Browser.ps1` / `Finish-Session.ps1` | 独立控制台窗口归属核对、指定模拟器实例关闭与资源收尾 |
 
 正常流程：启动入口准备设备 → 用户或Windows计划发起任务 → 确认应用页面 → 新鲜核分 → 依次执行未满分项目 → 再核分并保存积分与任务结果 → 全部完成后按选项倒计时关闭。只查看当天已完成记录时不启动模拟器，执行新任务或次日定时启动仍会准备设备。
 
 本人验证不是模型或自动化模块的一部分。程序等待正常页面恢复；超时或不能确认时保留已确认结果和待处理项目，不把动作成功当成加分成功。
+
+## 历史积分导入接口
+
+以下仅限本机控制台调用，供后续设置页复用：
+
+| 请求 | 用途 |
+| --- | --- |
+| `GET /api/local/history-import` | 首次选择、当前作业、阶段、已读取天数及结果 |
+| `POST /api/local/history-import` | 启动导入；已有导入时返回同一作业，学习任务运行时拒绝 |
+| `POST /api/local/history-import/cancel` | 请求取消，写库阶段不可中断 |
+| `POST /api/local/history-import/skip` | 记住“从今天开始记录”，不删历史、不运行任务 |
+
+POST 使用空 JSON 对象。`/api/status` 同时携带 `history_import`，页面刷新后可恢复进度。首次选择与最近作业保存在私有 `config/history-import.json`；重启时把未结束作业标为中断，不自动制造成功结果。积分仍保存在原 SQLite 库中，历史日总分只写 `daily_totals`，不伪造 `runs` 或 `task_results`。
+
+当前阅读通道是现有 MaaFramework/MuMu 的截图与本机 OCR，使用两次反向完整扫描交叉核对。官方公开 H5 定义了 `getDaysScore`，但调用依赖 App 内的已登录 LWP 桥；没有把接口名称或页面静态文件当作已经接通的原始数据接口。实现没有提取登录凭证、启用 App 调试或增加模型调用。
+
+此功能沿用单个本机账号配置。切换学习强国账号前应使用独立安装目录与积分库，当前不能自动隔离多个账号的历史。

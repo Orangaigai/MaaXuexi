@@ -33,6 +33,7 @@ jobs:
           node --check page/assets/local-provider.js
           node --check page/assets/local-schedule.js
           node --check page/assets/points-history.js
+          node --check page/assets/history-import.js
           node --check page/assets/key-setup.js
       - name: Offline regression
         run: python -m unittest discover -s tests -p 'test_*.py' -q

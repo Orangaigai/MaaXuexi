@@ -75,7 +75,11 @@ class PointsHistory:
         with self.connect() as db:
             self._observe(db, scores, beijing_time(observed_at))
 
-    def import_daily_totals(self, rows, *, observed_at=None):
+    def has_imported_history(self):
+        with self.connect() as db:
+            return db.execute('SELECT 1 FROM daily_totals LIMIT 1').fetchone() is not None
+
+    def import_daily_totals(self, rows, *, observed_at=None, return_counts=False):
         """Import checked past-day totals from the app; never infer task outcomes."""
         observed = beijing_time(observed_at)
         validated = {}
@@ -91,11 +95,19 @@ class PointsHistory:
                 raise ValueError('请使用已核实的往日积分，同一日期不能有冲突分数。')
             validated[day] = points
         with self.connect() as db:
+            existing = {row['day']: row for row in db.execute('SELECT * FROM daily_totals')}
+            stamp = observed.isoformat(timespec='microseconds')
+            counts = dict(added=0, updated=0, unchanged=0, ignored=0)
+            for day, points in validated.items():
+                old = existing.get(day)
+                key = ('added' if old is None else 'ignored' if old['observed_at'] > stamp else
+                       'unchanged' if old['points'] == points else 'updated')
+                counts[key] += 1
             db.executemany('''INSERT INTO daily_totals VALUES(?,?,?)
                 ON CONFLICT(day) DO UPDATE SET points=excluded.points,observed_at=excluded.observed_at
                 WHERE excluded.observed_at>=daily_totals.observed_at''',
                 [(day, points, observed.isoformat(timespec='microseconds')) for day, points in validated.items()])
-        return len(validated)
+        return counts if return_counts else len(validated)
 
     def record_run(self, report):
         if not isinstance(report, dict) or report.get('status') not in STATES:

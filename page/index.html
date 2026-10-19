@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>MaaXuexi · 任务控制台</title>
   <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261019.14">
-  <link rel="stylesheet" href="/assets/console.css?v=local-20261019.14">
+  <link rel="stylesheet" href="/assets/console.css?v=local-20261019.16">
 </head>
 <body>
 <main>
@@ -81,6 +81,10 @@
   </div>
   <section class="card points-card" aria-labelledby="pointsHeading">
     <div class="section-heading points-title"><div><h2 id="pointsHeading" tabindex="-1">每日积分</h2><p class="muted">点选日期，查看得分与任务结果。</p></div><div class="points-summary"><span class="points-today">今日 <strong id="todayPoints">—</strong></span><span>本月累计 <strong id="monthPoints">—</strong></span></div></div>
+    <section id="historyImport" class="history-import" aria-labelledby="historyImportTitle" hidden>
+      <div class="history-import-copy"><h3 id="historyImportTitle">补全你的积分日历</h3><p id="historyImportDescription">导入学习强国可查询的历史每日积分，直观了解近期学习情况。</p><p id="historyImportHint" class="muted">也可以从今天开始记录，之后随时在「设置 → 积分记录」中导入。</p><p id="historyImportMessage" class="feedback" role="status" aria-live="polite"></p><progress id="historyImportProgress" aria-label="历史积分导入进度" hidden></progress></div>
+      <div class="history-import-actions"><button id="historyImportSkip" class="quiet compact">从今天开始记录</button><button id="historyImportStart" class="primary compact">立即导入</button><button id="historyImportCancel" class="compact" hidden>取消导入</button></div>
+    </section>
     <div class="points-layout">
       <div class="points-calendar">
         <div class="calendar-toolbar"><div class="calendar-navigation"><button id="pointsPrevious" class="compact" aria-label="上个月">‹</button><strong id="pointsMonth">正在读取…</strong><button id="pointsNext" class="compact" aria-label="下个月">›</button></div><button id="pointsCurrent" class="compact">回到本月</button></div>

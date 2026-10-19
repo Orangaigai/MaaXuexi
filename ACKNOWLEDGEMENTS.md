@@ -21,3 +21,5 @@
 - [保存状态反馈](https://github.com/n8n-io/n8n/issues/25359)和[界面持续加载反馈](https://github.com/n8n-io/n8n/issues/28096)：以实际编辑值判断未保存状态，操作请求结束后及时恢复界面。本项目自行实现对应交互，不引入相关项目代码。
 
 这些设计资料和社区讨论用于借鉴，不代表其维护者参与、认证或推荐本项目。
+
+历史导入的交互另参考 [Karakeep 按作业跟踪导入进度](https://github.com/karakeep-app/karakeep/pull/2950)、[导入最后一项持续等待的用户反馈](https://github.com/karakeep-app/karakeep/issues/2208)和 [Actual Budget 的导入去重说明](https://actualbudget.org/docs/transactions/importing/)：刷新保留同一作业、明确成功和失败状态，并按本项目的日期键合并分数。只借鉴交互和数据处理原则，没有复制相关项目代码或引入依赖。

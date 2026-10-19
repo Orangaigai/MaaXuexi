@@ -62,19 +62,20 @@
   }
   function controls(){
     const running=Boolean(health?.task_running),paused=Boolean(health?.paused),requested=Boolean(health?.pause_requested);
-    $('runtimeCard').classList.toggle('is-running',running&&!paused);
+    const importing=Boolean(health?.history_import?.active);
+    $('runtimeCard').classList.toggle('is-running',(running&&!paused)||importing);
     $('runtimeCard').classList.toggle('is-waiting',Boolean(paused||health?.can_continue));
-    $('runtimeCard').classList.toggle('is-complete',!running&&health?.run_summary?.status==='completed');
+    $('runtimeCard').classList.toggle('is-complete',!running&&!importing&&health?.run_summary?.status==='completed');
     $('runtimeCard').classList.toggle('is-offline',loaded&&!health);
     for(const[name,input]of inputs)input.disabled=!loaded||busy||running||(name==='发表观点'&&!commentEnabled);
-    $('start').disabled=!loaded||busy||running||!health;
+    $('start').disabled=!loaded||busy||running||importing||!health;
     $('save').disabled=!loaded||busy||running||!health;
     $('saveBase').disabled=!loaded||busy||running||!health;
     $('pause').hidden=!running||paused;$('pause').disabled=busy||requested;
     $('pause').textContent=requested?'正在暂停…':'暂停';
-    $('resume').hidden=!health?.can_continue;$('resume').disabled=busy||!health;
+    $('resume').hidden=!health?.can_continue;$('resume').disabled=busy||importing||!health;
     $('stop').hidden=!running;$('stop').disabled=busy;
-    $('diagnose').disabled=diagnosing||running||!health;
+    $('diagnose').disabled=diagnosing||running||importing||!health;
     $('connect').hidden=true;
     if(pendingButton==='pause')$('pause').textContent='正在暂停…';
     for(const[id,label]of Object.entries(buttonLabels)){
@@ -85,6 +86,9 @@
     renderProgress();
     renderSavedState();window.dispatchEvent(new CustomEvent('maa:status',{detail:health}));
   }
+  window.addEventListener('maa:history-import',event=>{
+    if(health){health.history_import=event.detail;controls();}
+  });
   async function act(path,body,message,button=null){
     busy=true;pendingButton=button;controls();
     const target=['/api/pause','/api/continue','/api/stop'].includes(path)?$('runMessage'):$('actionMessage');
@@ -167,7 +171,8 @@
       $('connection').title=health.connected?'当前模拟器已连接。':'执行任务时会自动准备模拟器。';
       $('version').textContent=health.local_version;
       const run=health.run_summary;let text='选择任务后即可开始。';
-      if(health.task_running){
+      if(health.history_import?.active)text='正在导入历史积分，学习任务将在导入结束后可用。';
+      else if(health.task_running){
         if(health.pause_requested)text='正在暂停，当前操作结束后将停下。';
         else if(health.paused)text=health.manual_paused?'任务已暂停，点击“继续执行”恢复。':'请在模拟器处理验证或提示，完成后会自动继续。';
         else text=run?.phase||'正在准备任务…';
@@ -175,7 +180,7 @@
       else if(health.can_continue)text='还有任务未完成，可点击“继续执行”补做。';
       else if(health.last_error)text='任务未完成，请查看每日积分中的任务详情。';
       $('status').textContent=text;renderProvider();
-      document.title=(health.task_running?(health.paused?'[已暂停] ':'[运行中] '):health.can_continue?'[待继续] ':'')+'MaaXuexi · 任务控制台';
+      document.title=(health.history_import?.active?'[导入中] ':health.task_running?(health.paused?'[已暂停] ':'[运行中] '):health.can_continue?'[待继续] ':'')+'MaaXuexi · 任务控制台';
     }catch{if(ticket!==refreshRevision)return;health=null;$('status').textContent='后台暂未连接，正在等待恢复…';
       $('connection').textContent='正在重连后台';$('connection').dataset.state='offline';$('connection').title='暂未读到新状态，页面会自动重连。';}
     controls();
@@ -222,7 +227,7 @@
   $('clearLog').onclick=()=>{lines=[];$('logs').textContent='';};
   let diagnosing=false;
   $('diagnose').onclick=async()=>{
-    if(diagnosing||health?.task_running)return;
+    if(diagnosing||health?.task_running||health?.history_import?.active)return;
     diagnosing=true;$('diagnose').disabled=true;$('diagnosticsMessage').textContent='正在检查…';
     try{
       const result=await request('/api/local/diagnostics');$('diagnosticsResults').replaceChildren();
@@ -234,7 +239,7 @@
       }
       $('diagnosticsMessage').textContent=result.summary.error?`检查完成，${result.summary.error}项需要处理。`:'检查完成。';
     }catch(error){$('diagnosticsMessage').textContent=error.message;}
-    finally{diagnosing=false;$('diagnose').disabled=Boolean(health?.task_running);}
+    finally{diagnosing=false;controls();}
   };
   $('logPanel').addEventListener('toggle',paintLogs);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh(true);refreshProvider();paintLogs();}});

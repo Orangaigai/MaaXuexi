@@ -121,6 +121,7 @@
     if(key!==lastRun&&!reading){lastRun=key;load();}
   });
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!reading)load();});
+  window.addEventListener('maa:points-changed',()=>load());
   request('/api/local/completion-options').then(result=>{optionsLoaded=true;$('autoClose').checked=result.auto_close;$('autoClose').disabled=lastAction?.state==='closing';})
     .catch(error=>{$('completionSettingMessage').textContent=error.message;});
   load();setInterval(()=>{if(!document.hidden)completion();},1000);

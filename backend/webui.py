@@ -27,6 +27,7 @@ from task_support import VERSION, read_report, ordered_tasks, ALIASES, TaskIncom
 from comment_tasks import comment_policy
 from schedule_support import ScheduleOptions, read_schedule, save_schedule, set_execution_mode
 from points_history import PointsHistory
+from history_import import HistoryImport
 from completion_actions import CompletionActions, read_options, save_options
 
 class CompletionOptions(BaseModel):
@@ -72,9 +73,14 @@ class AppState:
         self.lock = threading.RLock()
         self.current_tasks = []
         self.points = PointsHistory()
+        self.history_import = HistoryImport(self.points, self.collect_history)
         self.completion = CompletionActions()
         self.shutdown = lambda: None
         self.shutting_down = False
+
+    def collect_history(self, progress, cancel):
+        from history_reader import collect_platform_history
+        return collect_platform_history(self.message_conn, progress, cancel)
 
 app_state = AppState()
 
@@ -130,7 +136,8 @@ async def collect_messages():
             next_completion = time.monotonic() + .5
             with app_state.lock:
                 if app_state.completion.state['state'] in ('pending', 'closing'):
-                    app_state.completion.poll(current_report(), running=task_running(), shutdown=app_state.shutdown)
+                    app_state.completion.poll(current_report(), running=task_running() or app_state.history_import.running,
+                                              shutdown=app_state.shutdown)
         await asyncio.sleep(0.05)
 
 @asynccontextmanager
@@ -144,6 +151,7 @@ async def lifespan(app):
         app_state.worker.stop_flag = True
         app_state.worker.pause_flag = False
     app_state.completion.cancel()
+    app_state.history_import.cancel()
     collector.cancel()
     try:
         await collector
@@ -166,6 +174,7 @@ def homepage():
     html = html.replace('/assets/local-provider.js', '/assets/local-provider.js?v=' + VERSION)
     html = html.replace('</body>', '<script defer src="/assets/local-schedule.js?v=' + VERSION + '"></script></body>')
     html = html.replace('</body>', '<script defer src="/assets/points-history.js?v=' + VERSION + '"></script></body>')
+    html = html.replace('</body>', '<script defer src="/assets/history-import.js?v=' + VERSION + '"></script></body>')
     return HTMLResponse(html, headers={'Cache-Control':'no-store'})
 
 @app.get('/local/api-key')
@@ -190,7 +199,8 @@ def get_provider():
 
 @app.get('/api/local/diagnostics')
 def local_diagnostics():
-    if task_running():raise HTTPException(409,'请在任务结束后检查运行环境。')
+    if task_running() or app_state.history_import.running:
+        raise HTTPException(409,'请在任务或历史导入结束后检查运行环境。')
     from runtime_doctor import diagnose
     return diagnose(Path.cwd(),health=status(),provider=provider_metadata(),schedule=read_schedule(),
                     adb_command=getattr(app_state.worker,'_adb_command',None))
@@ -223,6 +233,46 @@ def get_points_history(month: str | None = None):
 @app.get('/api/local/completion-options')
 def get_completion_options():
     return read_options()
+
+
+@app.get('/api/local/history-import')
+def history_import_status():
+    return app_state.history_import.snapshot()
+
+
+@app.post('/api/local/history-import/skip')
+def skip_history_import():
+    try:
+        return dict(status='success', **app_state.history_import.skip())
+    except ValueError as error:
+        raise HTTPException(409, str(error)) from error
+    except OSError as error:
+        raise HTTPException(503, '选择未能保存，请稍后重试。') from error
+
+
+@app.post('/api/local/history-import')
+def start_history_import():
+    with app_state.lock:
+        if task_running():
+            raise HTTPException(409, '学习任务执行中，请结束后再导入历史积分。')
+        if not app_state.completion.cancel():
+            raise HTTPException(409, '正在关闭窗口，请重新打开控制台后再导入。')
+        try:
+            return dict(status='success', **app_state.history_import.start())
+        except OSError as error:
+            raise HTTPException(503, '导入状态未能保存，请检查本机磁盘后重试。') from error
+
+
+@app.post('/api/local/history-import/cancel')
+def cancel_history_import():
+    with app_state.lock:
+        try:
+            cancelled = app_state.history_import.cancel()
+        except OSError as error:
+            raise HTTPException(503, '取消状态未能保存，请稍后查看导入结果。') from error
+        if not cancelled:
+            raise HTTPException(409, '当前导入已结束或正在保存，请稍后查看结果。')
+        return dict(status='success', **app_state.history_import.snapshot())
 
 @app.post('/api/local/completion-options')
 def update_completion_options(options: CompletionOptions):
@@ -320,7 +370,7 @@ def get_devices():
 @app.post('/api/connect_device')
 def connect_device(device: DeviceModel):
     with app_state.lock:
-        if task_running():
+        if task_running() or app_state.history_import.running:
             raise HTTPException(409, '请先中止当前任务。')
         try:
             connected = ensure_worker().connect_device(device)
@@ -375,6 +425,8 @@ def verify_full_flow(tasks: TaskModel):
 
 def start_selected(tasks: TaskModel, daily_acceptance=False, verification_first=False):
     with app_state.lock:
+        if app_state.history_import.running:
+            return dict(status='failed', message='正在导入历史积分，请等导入结束后再执行学习任务。')
         worker = ensure_worker()
         if task_running():
             return dict(status='failed', message='任务已开始')
@@ -458,7 +510,8 @@ def status():
                 manual_paused=paused and bool(getattr(app_state.worker,'_manual_hold',False)),
                 can_continue=(paused or requested) if running else bool(continuation_tasks(report)),
                 provider='deepseek', model=MODEL, api_key_configured=key_configured(),
-                completion_action=app_state.completion.snapshot())
+                completion_action=app_state.completion.snapshot(),
+                history_import=app_state.history_import.snapshot())
 
 @app.websocket('/api/ws')
 async def websocket_endpoint(websocket: WebSocket):

@@ -26,7 +26,7 @@ function Invoke-MuMuCommand([string]$CliPath,[string]$Arguments) {
 
 try {
     $health=Invoke-RestMethod 'http://127.0.0.1:8000/api/status' -TimeoutSec 10
-    if ($health.pid -ne $BackendPid -or $health.task_running -or $health.run_summary.run_id -ne $RunId -or
+    if ($health.pid -ne $BackendPid -or $health.task_running -or $health.history_import.active -or $health.run_summary.run_id -ne $RunId -or
         $health.run_summary.status -ne 'completed' -or $health.completion_action.state -ne 'closing') {
         throw 'The completed session changed. No window or emulator was closed.'
     }
