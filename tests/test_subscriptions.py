@@ -419,11 +419,37 @@ class FlowTests(unittest.TestCase):
               dict(text='频道',box=[215,144,80,25]),dict(text='订阅',box=[640,145,45,25])]
         self.value._sub_records=Mock(return_value=rows);self.value._sub_click=Mock()
         self.value._sub_wait=Mock(return_value=[dict(r,text='已订阅') if r['text']=='订阅' else r for r in rows])
-        self.value._sub_follow_saved=Mock(return_value=False);self.value._sub_score=Mock();self.value._sub_evidence=Mock()
-        with self.assertRaisesRegex(HumanRequired,'未在我的订阅中保存'):
+        self.value._sub_follow_saved=Mock(return_value=False)
+        self.value._sub_score=Mock(return_value=dict(value=0,maximum=2));self.value._sub_evidence=Mock()
+        with self.assertRaisesRegex(HumanRequired,'关注列表和积分均未确认新增'):
             self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
-        self.value._sub_score.assert_not_called()
+        self.value._sub_score.assert_called_once()
         self.value._sub_click.assert_called_once()
+
+    def test_missing_membership_does_not_discard_actual_score_credit(self):
+        rows=[dict(text='强国号',box=[245,65,80,32]),dict(text='地方平台',box=[365,68,105,30]),
+              dict(text='频道',box=[215,144,80,25]),dict(text='订阅',box=[640,145,45,25])]
+        self.value._sub_records=Mock(return_value=rows);self.value._sub_click=Mock()
+        self.value._sub_wait=Mock(return_value=[dict(r,text='已订阅') if r['text']=='订阅' else r for r in rows])
+        self.value._sub_follow_saved=Mock(return_value=False);self.value._sub_evidence=Mock()
+        self.value._sub_score=Mock(return_value=dict(value=1,maximum=2))
+        after=self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
+        self.assertEqual(after['value'],1)
+        self.assertEqual(self.value.run_report.snapshot()['tasks']['订阅']['after']['value'],1)
+        self.value._sub_click.assert_called_once();self.value._sub_score.assert_called_once()
+        self.assertEqual(len(self.store.pending()),1)  # Cleanup is still required.
+        self.assertEqual(self.store.stats()['completed_operations'],0)
+
+    def test_missing_membership_does_not_override_a_changed_score_rule(self):
+        rows=[dict(text='强国号',box=[245,65,80,32]),dict(text='地方平台',box=[365,68,105,30]),
+              dict(text='频道',box=[215,144,80,25]),dict(text='订阅',box=[640,145,45,25])]
+        self.value._sub_records=Mock(return_value=rows);self.value._sub_click=Mock()
+        self.value._sub_wait=Mock(return_value=[dict(r,text='已订阅') if r['text']=='订阅' else r for r in rows])
+        self.value._sub_follow_saved=Mock(return_value=False);self.value._sub_evidence=Mock()
+        self.value._sub_score=Mock(return_value=dict(value=1,maximum=3))
+        with self.assertRaisesRegex(TaskIncomplete,'积分规则或分数发生异常变化'):
+            self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
+        self.assertEqual(len(self.store.pending()),1)
 
     def test_my_subscription_header_alone_does_not_mean_membership_has_loaded(self):
         header=[dict(text='我的订阅',box=[307,55,104,31]),dict(text='添加',box=[641,53,58,34])]
@@ -431,6 +457,32 @@ class FlowTests(unittest.TestCase):
         self.value._sub_mine=Mock(return_value=header)
         self.value._sub_records=Mock(side_effect=[header,ready]);self.value._sleep=Mock()
         self.assertTrue(self.value._sub_follow_saved('频道'))
+        self.assertEqual(self.value._sub_records.call_count,2)
+
+    def test_cached_empty_list_waits_for_the_new_follow(self):
+        header=[dict(text='我的订阅',box=[307,55,104,31]),dict(text='添加',box=[641,53,58,34])]
+        empty=header+[dict(text='暂无更多内容',box=[295,683,129,27])]
+        ready=header+[dict(text='频道',box=[105,200,120,25])]
+        self.value._sub_mine=Mock();self.value._sub_records=Mock(side_effect=[empty,ready])
+        self.value._sleep=Mock()
+        self.assertTrue(self.value._sub_follow_saved('频道'))
+        self.assertEqual(self.value._sub_records.call_count,2)
+
+    def test_follow_absence_requires_expired_load_window_and_explicit_empty_list(self):
+        header=[dict(text='我的订阅',box=[307,55,104,31]),dict(text='添加',box=[641,53,58,34])]
+        empty=header+[dict(text='暂无更多内容',box=[295,683,129,27])]
+        self.value._sub_mine=Mock();self.value._sub_wait=Mock(return_value=None)
+        self.value._sub_records=Mock(return_value=empty)
+        self.assertFalse(self.value._sub_follow_saved('频道'))
+        self.assertFalse(self.value._sub_wait.call_args.kwargs['required'])
+        self.value._sub_records.return_value=header
+        with self.assertRaises(TaskIncomplete):self.value._sub_follow_saved('频道')
+
+    def test_cleanup_does_not_treat_an_unloaded_header_as_an_empty_list(self):
+        header=[dict(text='我的订阅',box=[307,55,104,31]),dict(text='添加',box=[641,53,58,34])]
+        ready=header+[dict(text='频道',box=[105,200,120,25]),dict(text='已订阅',box=[622,223,75,26])]
+        self.value._sub_records=Mock(side_effect=[header,ready]);self.value._sleep=Mock()
+        self.assertEqual(self.value._sub_find_owned('频道'),ready[-1])
         self.assertEqual(self.value._sub_records.call_count,2)
 
     def test_my_subscription_list_resumes_after_verification_without_browser_continue(self):
@@ -513,6 +565,7 @@ class FlowTests(unittest.TestCase):
         value._sub_mine=Mock();value._sub_back=Mock();value._sleep=Mock()
         value._sub_records=Mock(return_value=rows);value._sub_click=Mock();value._sub_evidence=Mock()
         value._sub_wait=Mock(side_effect=[[cancel],base])
+        value._sub_loaded_mine=Mock(return_value=rows)
         with self.assertRaises(TaskIncomplete):value._sub_cleanup(self.store)
         self.assertEqual(self.store.stats()['completed_operations'],0)
         self.assertEqual(len(self.store.pending()),1)

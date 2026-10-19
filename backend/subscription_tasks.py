@@ -117,7 +117,7 @@ class SubscriptionTasks:
         self._guard_verification(records)
         return self._screen_records() if verification_visible(records) else records
 
-    def _sub_wait(self, predicate, timeout=12):
+    def _sub_wait(self, predicate, timeout=12, required=True):
         deadline = time.monotonic() + timeout
         paused_seconds = getattr(self,'_paused_seconds',0)
         while time.monotonic() < deadline:
@@ -129,7 +129,9 @@ class SubscriptionTasks:
                 return records
             self._sleep(.4)
         self._sub_evidence('unrecognized',records)
-        raise TaskIncomplete('订阅页面未确认，已保留现场和订阅记录')
+        if required:
+            raise TaskIncomplete('订阅页面未确认，已保留现场和订阅记录')
+        return None
 
     def _sub_click(self, row):
         self._check_active()
@@ -278,22 +280,30 @@ class SubscriptionTasks:
         saved=self._sub_wait(lambda rows:subscription_scene(rows)=='catalog' and any(
             a['name']==account['name'] and a['state']=='已订阅' for a in subscription_accounts(rows)))
         self._sub_evidence('follow-saved',saved)
-        if not self._sub_follow_saved(account['name']):
-            raise HumanRequired('关注未在我的订阅中保存；停止新增订阅，待本人处理')
-        self.send_log('已确认关注保存：'+account['name']+'；开始核分')
+        membership_saved=self._sub_follow_saved(account['name'])
+        self.send_log(('已确认关注保存：' if membership_saved else '关注列表尚未确认：')
+                      +account['name']+'；开始核分')
         after = self._sub_score()
         self.run_report.task('订阅',after=after)
         self._sub_evidence('score-after-follow',self._sub_records())
         if after['maximum'] != before['maximum'] or after['value'] < before['value']:
             raise TaskIncomplete('订阅积分规则或分数发生异常变化，停止新增订阅')
         self.send_log(f"订阅核分：{before['value']}/{before['maximum']} → {after['value']}/{after['maximum']}")
+        # Membership and points can update at different times. A missing list
+        # entry is not evidence that no points were credited; always read the
+        # authoritative score once before deciding this request needs attention.
+        if not membership_saved and after['value']==before['value']:
+            raise HumanRequired('关注列表和积分均未确认新增；停止新增订阅，待本人处理')
         return after
 
     def _sub_follow_saved(self, name):
         self._sub_mine()
         records=self._sub_wait(lambda rows:subscription_scene(rows)=='mine' and any(
-            r['text'].strip()=='暂无更多内容' or
-            (175<=r['box'][1]<1175 and re.sub(r'\s+','',r['text'])==name) for r in rows))
+            175<=r['box'][1]<1175 and re.sub(r'\s+','',r['text'])==name for r in rows),required=False)
+        # An empty cached list can briefly render before the new follow arrives.
+        # Give this existing request its normal load window before declaring it absent.
+        if records is None:
+            records=self._sub_records()
         if subscription_scene(records) != 'mine':
             raise TaskIncomplete('验证后未确认我的订阅页面，保留待取消记录')
         matches = [r for r in records if 175 <= r['box'][1] < 1175
@@ -305,10 +315,15 @@ class SubscriptionTasks:
             return False
         raise TaskIncomplete('验证后非空列表未能唯一定位新增关注，保留记录和页面')
 
+    def _sub_loaded_mine(self):
+        return self._sub_wait(lambda rows:subscription_scene(rows)=='mine' and any(
+            r['text'].strip()=='暂无更多内容' or
+            (90<=r['box'][0]<590 and 175<=r['box'][1]<1175) for r in rows))
+
     def _sub_find_owned(self, name):
         seen_pages = set()
         for _ in range(20):
-            records = self._sub_records()
+            records = self._sub_loaded_mine()
             if subscription_scene(records) != 'mine':
                 raise TaskIncomplete('清理新增订阅时页面已改变，未继续操作')
             if any(r['text'].strip() == '暂无更多内容' for r in records):
@@ -415,7 +430,7 @@ class SubscriptionTasks:
     def _sub_confirm_removed(self, names):
         seen_pages = set()
         for _ in range(20):
-            records = self._sub_records()
+            records = self._sub_loaded_mine()
             if subscription_scene(records) != 'mine':
                 raise TaskIncomplete('统一核对取消结果时未确认我的订阅')
             present={re.sub(r'\s+','',r['text']) for r in records
