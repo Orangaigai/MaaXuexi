@@ -125,8 +125,9 @@ class SpeedTests(unittest.TestCase):
         value=test_fun_challenge.FunChallengeTests().make_worker()
         value._fun_records=Mock(side_effect=[page(0),page(0)]+[page(0)]*8+[page(1,'第二个不同题目'),page(1,'第二个不同题目'),
             [dict(text='挑战结束',box=[200,600,300,40])]])
-        with self.assertRaisesRegex(TaskIncomplete,'本局结束'):
-            value.funny_answer()
+        value.funny_answer()
+        self.assertTrue(value._fun_metrics['early_end'])
+        value._exit_fun_challenge.assert_called_once()
         self.assertEqual(value.ai_resolver.resolve_fun_choice.call_count,2)
         self.assertEqual(value._fun_metrics['questions_clicked'],2)
         self.assertTrue(all(call.args[0]<=.12 for call in value._sleep.call_args_list))

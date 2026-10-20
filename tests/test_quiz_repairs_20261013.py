@@ -374,5 +374,14 @@ class QuizRepairTests(unittest.TestCase):
         self.assertTrue(value._resume_fun_submission(previous))
         value._exit_fun_challenge.assert_called_once_with(page)
 
+    def test_early_wrong_round_resumes_only_its_pending_submission(self):
+        value,previous=self.pending_fun_worker(1)
+        previous['tasks']['趣味答题']['metrics'].update(target_correct=3,planned_correct=8,early_end=True)
+        page=[dict(row,text='本次答对1题') if row['text'].startswith('本次答对') else row for row in self.end_dialog()]
+        value._fun_records.return_value=page
+        self.assertTrue(value._resume_fun_submission(previous))
+        value._exit_fun_challenge.assert_called_once_with(page)
+        value.funny_answer.assert_not_called()
+
 if __name__=='__main__':
     unittest.main()

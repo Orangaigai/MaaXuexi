@@ -3,6 +3,7 @@ import hashlib
 import copy
 import re
 import time
+from random import choices
 import numpy as np
 from PIL import Image, ImageFilter
 
@@ -125,6 +126,12 @@ def challenge_target(rules, maximum=10):
     if match and 1 <= int(match[1]) <= 10 and int(match[2]) == maximum:
         return int(match[1])
     return 10
+
+
+def challenge_length(minimum):
+    """Choose once per single-player round; never finish below the scoring rule."""
+    counts=list(range(max(3,minimum),16))
+    return choices(counts,weights=[34 if count<=9 else 7 for count in counts],k=1)[0]
 
 
 class FunChallenge(FourPlayerQuiz):
@@ -430,7 +437,8 @@ class FunChallenge(FourPlayerQuiz):
                 return True
         if (not report or '趣味答题' not in report.snapshot()['tasks'] or
                 metrics.get('mode') != '挑战答题' or not metrics.get('settlement_observed') or
-                metrics.get('confirmed_correct',0) < metrics.get('target_correct',10) or metrics.get('exited')):
+                (metrics.get('confirmed_correct',0) < metrics.get('target_correct',10)
+                 and not metrics.get('early_end')) or metrics.get('exited')):
             return False
         if report.snapshot()['tasks']['趣味答题'].get('state','pending') != 'pending':
             return False
@@ -444,7 +452,7 @@ class FunChallenge(FourPlayerQuiz):
         if not challenge_settled(records):
             report.task('趣味答题',state='pending',completion_pending=False)
             return False
-        self.send_log('趣味答题：恢复已满足计分要求的本轮结算')
+        self.send_log('趣味答题：恢复已有本轮结算，不重新答题')
         self._exit_fun_challenge(records)
         report.task('趣味答题',state='pending',completion_pending=False,metrics=self._fun_metrics)
         return True
@@ -465,6 +473,9 @@ class FunChallenge(FourPlayerQuiz):
             return self.four_player_answer(opening_records)
         if self._fun_mode == '双人对战':
             return self.two_player_answer(opening_records)
+        planned=challenge_length(target)
+        self._fun_metrics.update(planned_correct=planned,model_call_limit=planned+4)
+        self.send_log(f'单人挑战：本局计划答对{planned}题；平台计分要求为{target}题，提前答错则结束本局')
         pending = None
         highest = 0
         idle = 0
@@ -488,18 +499,19 @@ class FunChallenge(FourPlayerQuiz):
                     raise TaskIncomplete('趣味答题计数回退，停止本轮并保留实际结果')
                 highest = count
                 self._fun_metrics['confirmed_correct'] = count
-            finishing = highest >= target
-            if finishing and wrong_or_finished(records):
-                self.send_log(f'趣味答题：应用确认答对{highest}题，本局已结束，准备结算')
+            finishing = highest >= planned
+            if wrong_or_finished(records):
+                self._fun_metrics.update(early_end=not finishing,
+                    end_reason='planned_finish' if finishing else 'answer_incorrect',
+                    scoring_minimum_met=highest>=target)
+                self.send_log(f'趣味答题：应用确认答对{highest}题，本局已结束，准备结算并核实实际积分')
                 self._wait_fun_settlement()
                 self._exit_fun_challenge()
                 self._fun_metrics['exited'] = True
                 return
-            if not finishing and wrong_or_finished(records):
-                raise TaskIncomplete(f'趣味答题本局结束，应用确认答对{highest}题；积分由积分页复核')
             if finishing and not self._fun_metrics.get('normal_end_started'):
                 self._fun_metrics['normal_end_started'] = True
-                self.send_log(f'趣味答题：已满足答对{target}题的计分要求，完成正常收尾作答')
+                self.send_log(f'趣味答题：已达到本局{planned}题目标，完成正常收尾作答')
             if not current or pending:
                 idle += 1
                 if idle_started is None:
@@ -508,8 +520,8 @@ class FunChallenge(FourPlayerQuiz):
                     raise TaskIncomplete('趣味答题未确认下一题或答对计数，已停止重复点击')
                 self._sleep(0.12)
                 continue
-            if self._fun_metrics['model_calls'] >= 12:
-                raise TaskIncomplete('趣味答题达到12次模型调用上限')
+            if self._fun_metrics['model_calls'] >= self._fun_metrics['model_call_limit']:
+                raise TaskIncomplete('趣味答题达到本局有限模型调用上限')
             if finishing and self._fun_metrics['ending_answers_clicked'] >= 2:
                 raise TaskIncomplete('趣味答题两次收尾作答仍未结束，保留现场，未空等下一题超时')
             image = self.tasker.controller.cached_image.copy()

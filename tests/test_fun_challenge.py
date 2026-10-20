@@ -1,14 +1,15 @@
 """Counter, mode, stale-answer and bounded-stop checks, without devices/API calls."""
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import json
 import httpx
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
-from fun_challenge import correct_count, options_from_records, fingerprint, question_text, challenge_target
+from fun_challenge import correct_count, options_from_records, fingerprint, question_text, challenge_target, challenge_length
 from task_support import TaskIncomplete, TaskUnavailable, TaskSkipped
 from test_optimization import worker, job
 from answer_client import AIResolver
@@ -24,6 +25,10 @@ def page(count, question='这道题应该选哪一个'):
 
 
 class FunChallengeTests(unittest.TestCase):
+    def setUp(self):
+        patcher=patch('fun_challenge.challenge_length',side_effect=lambda minimum:minimum)
+        self.length=patcher.start();self.addCleanup(patcher.stop)
+
     def make_worker(self):
         value = worker()
         value._open_fun_challenge = Mock()
@@ -66,8 +71,9 @@ class FunChallengeTests(unittest.TestCase):
             evidence['after_options'],evidence['after_options'],[]])
         value._fun_records=Mock(side_effect=[evidence['before'],evidence['after'],
             evidence['after'],evidence['after'],[dict(text='挑战结束',box=[250,250,200,40])]])
-        with self.assertRaisesRegex(TaskIncomplete,'本局结束'):
-            value.funny_answer()
+        value.funny_answer()
+        self.assertTrue(value._fun_metrics['early_end'])
+        value._exit_fun_challenge.assert_called_once()
         self.assertEqual(value.ai_resolver.resolve_fun_choice.call_count,2)
         self.assertEqual(value._fun_metrics['stale_answers_discarded'],1)
         self.assertEqual(value._fun_metrics['questions_clicked'],1)
@@ -162,6 +168,46 @@ class FunChallengeTests(unittest.TestCase):
         self.assertEqual(challenge_target('“四人赛”每次答对3道及以上积10分',10),10)
         self.assertEqual(challenge_target('',10),10)
 
+    def test_random_plan_is_chosen_once_and_fifteen_is_reachable(self):
+        self.length.side_effect=None;self.length.return_value=15
+        value=self.make_worker();frames=[]
+        for count in range(16):frames.extend([page(count,f'题目{count}'),page(count,f'题目{count}')])
+        frames.append([dict(text='挑战结束',box=[200,600,300,60]),dict(text='本次答对15题',box=[200,730,260,40])])
+        value._fun_records=Mock(side_effect=frames)
+        value.funny_answer()
+        self.length.assert_called_once_with(10)
+        self.assertEqual(value._fun_metrics['planned_correct'],15)
+        self.assertEqual(value._fun_metrics['confirmed_correct'],15)
+        self.assertEqual(value._fun_metrics['model_calls'],16)
+        self.assertEqual(value._fun_metrics['ending_answers_clicked'],1)
+        value._exit_fun_challenge.assert_called_once()
+
+    def test_early_wrong_answer_exits_without_another_question_or_restart(self):
+        self.length.side_effect=None;self.length.return_value=9
+        value=self.make_worker()
+        value._fun_records=Mock(side_effect=[page(0),page(0),
+            [dict(text='挑战结束',box=[200,600,300,60]),dict(text='本次答对0题',box=[200,730,260,40])]])
+        value.funny_answer()
+        self.assertTrue(value._fun_metrics['early_end'])
+        self.assertFalse(value._fun_metrics['scoring_minimum_met'])
+        value.ai_resolver.resolve_fun_choice.assert_called_once()
+        value._wait_fun_settlement.assert_called_once()
+        value._exit_fun_challenge.assert_called_once()
+
+    def test_early_finish_does_not_claim_full_points_or_restart_the_round(self):
+        import task_support
+        value=self.make_worker();value._finish_existing_quiz=Mock()
+        value.read_learning_score=Mock(return_value={'趣味答题':dict(value=0,maximum=10)})
+        value._fun_records=Mock(side_effect=[page(0),page(0),
+            [dict(text='挑战结束',box=[200,600,300,60]),dict(text='本次答对0题',box=[200,730,260,40])]])
+        with tempfile.TemporaryDirectory() as folder,patch.object(task_support,'REPORT_PATH',Path(folder)/'run.json'),patch('utils.plyer.notification.notify'):
+            value.task(['趣味答题'])
+        report=value.run_report.snapshot()
+        self.assertEqual(report['status'],'partial')
+        self.assertEqual(report['tasks']['趣味答题']['after']['value'],0)
+        value.ai_resolver.resolve_fun_choice.assert_called_once()
+        value._open_fun_challenge.assert_called_once()
+
     def test_unlabeled_choice_contract_accepts_zero_and_rejects_invalid_indices(self):
         for answer,expected in [(0,0),(1,1),(True,None),(-1,None),(2,None),('0',None)]:
             resolver=AIResolver('offline-key','deepseek-flash'); resolver.session.close()
@@ -200,6 +246,20 @@ class FunChallengeTests(unittest.TestCase):
     def test_manual_and_saved_plans_keep_daily_quiz_last(self):
         plan=webui.TaskModel(tasklist=['每日答题','选读文章','趣味答题','趣味答题'])
         self.assertEqual(plan.tasklist,['选读文章','趣味答题','每日答题'])
+
+
+class ChallengeLengthTests(unittest.TestCase):
+    def test_three_to_nine_share_eighty_five_percent_of_the_weight(self):
+        with patch('fun_challenge.choices',return_value=[6]) as choose:
+            self.assertEqual(challenge_length(3),6)
+        counts=choose.call_args.args[0];weights=choose.call_args.kwargs['weights']
+        self.assertEqual(counts,list(range(3,16)))
+        self.assertAlmostEqual(sum(w for n,w in zip(counts,weights) if n<=9)/sum(weights),.85)
+
+    def test_unknown_or_higher_platform_minimum_is_never_lowered(self):
+        with patch('fun_challenge.choices',return_value=[12]) as choose:
+            challenge_length(10)
+        self.assertEqual(choose.call_args.args[0],list(range(10,16)))
 
 
 if __name__ == '__main__':

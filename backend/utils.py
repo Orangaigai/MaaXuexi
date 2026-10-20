@@ -27,6 +27,7 @@ from device_support import online, prepare_emulator
 from fun_challenge import FunChallenge
 from daily_hints import question_from_records, exact_hint_choice, exact_hint_parts
 from daily_text import choice_page, complete_hint, request_text
+from daily_gaps import all_options_from_gaps
 from screen_reading import read_screen
 from blank_hints import blank_context, hint_paragraph, exact_blank_hint
 from diagnostics import RunDiagnostics, observed, record_time
@@ -1374,7 +1375,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
     def _prepare(self, question_type: str) -> tuple:
         """准备答题数据，返回 (截图列表, 选项OCR结果, 红字列表, 填空格子数)。
         流程：
-        1. [极速+选择题] OCR扫描选项文字 (_get_options)
+        1. 读取完整题面；多选仅在明确限用一次、空格与选项等量时跳过提示
         2. [填空题] 统计文本框格子数 (_count_blanks)
         3. 查找"提示"按钮，未找到则下滑重试（下滑后重新扫描选项）
         4. 滚动截图找到提示区域
@@ -1385,6 +1386,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         self._choice_question_text = ''
         self._daily_choice_page = None
         self._daily_choice_text = None
+        self._daily_direct_choices = None
         self._blank_context=None
         self._blank_hint_text=''
         if question_type in ("单选题", "多选题"):
@@ -1397,6 +1399,11 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 if self._daily_choice_page:
                     options={letter:(text,options[letter][1])
                              for letter,text in self._daily_choice_page['options'].items()}
+                    direct=all_options_from_gaps(self._daily_choice_page,records,frame[0],options)
+                    if direct:
+                        self._daily_direct_choices=direct
+                        self.send_log('每日多选：题干明确每项限用一次，完整空格数与选项数相同，直接全选')
+                        return [frame[0].copy()],options,[],0
         if question_type == "填空题":
             result: TaskDetail = self.tasker.post_task("文本框").wait().get()
             blank_num = (
@@ -1462,6 +1469,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         """确定答案：优先极速匹配，失败则调用AI。
         返回 (答案, 是否极速) 元组。极速成功直接返回；否则发截图给AI大模型。
         AI失败则通知用户接管。"""
+        direct=getattr(self,'_daily_direct_choices',None)
+        if question_type=='多选题' and direct and sorted(options)==direct:
+            return direct,True
         hinted = exact_hint_choice(question_type,options,red_texts,getattr(self,'_choice_question_text',''))
         if hinted is not None:
             self.send_log('每日答题：提示原文已严格匹配选项，无需请求DeepSeek')
