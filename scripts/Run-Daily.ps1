@@ -127,6 +127,7 @@ try {
         }
     } while ($health.task_running)
     if ($health.run_summary.status -eq 'needs_human') { Write-RunLog 'User action required. Unattended run ended; completed scores retained. No further app operation was attempted.'; exit 2 }
+    if ($health.run_summary.status -eq 'partial') { Write-RunLog ('Run finished after successful startup; incomplete items: '+(@($health.run_summary.unfinished_tasks) -join ', ')+'. No task is still running. Use Continue on the control page to finish remaining work.'); exit 2 }
     if ($health.last_error) { Write-RunLog 'Task reported an error after successful startup. Check the control page and backend stderr logs.'; exit 2 }
     if ($health.run_summary.status -ne 'completed') { Write-RunLog 'Task ended after successful startup; remaining items are recorded on the control page.'; exit 2 }
     $credited = @($health.run_summary.tasks.PSObject.Properties | Where-Object { $_.Value.state -eq 'credited' })

@@ -686,16 +686,17 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         self.run_report.update(completed_tasks=completed, skipped_tasks=skipped, unfinished_tasks=unfinished)
         if report["status"] not in ("partial", "failed", "needs_human"):
             return
-        message = "待处理/未确认完成：" + "、".join(unfinished) + "。"
+        message = "本轮已结束。待处理/未确认完成：" + "、".join(unfinished) + "。"
         if completed:
             message += "已核实：" + "、".join(completed) + "。"
         if report.get("reason"):
             message += report["reason"][:80] + "。"
-        message += "详情保留在任务控制台，处理后重新执行。"
+        message += "可在控制台点击“继续执行”补做，已满分项目会跳过。"
         self.run_report.update(attention_message=message, notification_attempted=True)
         self.send_log(message)
         try:
-            plyer.notification.notify(title="MaaXuexi 待处理", message=message[:220], app_name="MaaXuexi", timeout=60)
+            title = "MaaXuexi 本轮结束，有待补做任务" if report['status']=='partial' else "MaaXuexi 待处理"
+            plyer.notification.notify(title=title, message=message[:220], app_name="MaaXuexi", timeout=60)
         except Exception as error:
             self.run_report.update(notification_error=type(error).__name__)
             self.send_log("桌面通知未能显示，待处理清单已保留在控制台和最近运行记录中")

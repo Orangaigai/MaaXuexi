@@ -55,6 +55,13 @@ function Invoke-RestMethod {
         self.assertEqual(observation,dict(exit_code=1,submissions=0))
         self.assertIn('Daily launcher failed:',log)
 
+    def test_partial_run_is_finished_pending_work_even_with_task_incomplete_error(self):
+        observation,log=self.monitor_outcome('partial','TaskIncomplete')
+        self.assertEqual(observation,dict(exit_code=2,submissions=1))
+        self.assertIn('Run finished after successful startup',log)
+        self.assertIn('No task is still running',log)
+        self.assertNotIn('Task reported an error',log)
+
     def test_owner_pause_is_monitored_without_exiting_or_resubmitting(self):
         source = Path(__file__).resolve().parents[1] / 'scripts/Run-Daily.ps1'
         with tempfile.TemporaryDirectory(prefix='maa-owner-monitor-') as temporary:

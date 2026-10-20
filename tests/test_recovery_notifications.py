@@ -75,6 +75,29 @@ class RecoveryNotificationTests(unittest.TestCase):
         self.assertEqual(report['status'], 'partial')
         self.assertEqual(report['tasks']['选读文章']['after'],score(11))
 
+    def test_subscription_failure_notifies_only_after_daily_points_are_verified(self):
+        value=self.value
+        value.read_learning_score=Mock(side_effect=[{'订阅':score(0,2),'每日答题':score(0,5)},
+                                                    {'每日答题':score(5,5)}])
+        value.subscribe=Mock(side_effect=task_support.TaskIncomplete('订阅账号名漏识别'))
+        value.daily_answer=Mock()
+        def notification(**kwargs):
+            report=value.run_report.snapshot()
+            self.assertEqual(report['status'],'partial')
+            self.assertEqual(report['completed_tasks'],['每日答题'])
+            self.assertEqual(report['unfinished_tasks'],['订阅'])
+            self.assertEqual(report['tasks']['每日答题']['after'],score(5,5))
+            self.assertIn('本轮结束',kwargs['title'])
+            self.assertIn('本轮已结束',kwargs['message'])
+            self.assertIn('继续执行',kwargs['message'])
+            self.assertNotIn('中断',kwargs['message'])
+        self.notify.side_effect=notification
+        value.task(['订阅','每日答题'],unattended=True)
+        value.subscribe.assert_called_once();value.daily_answer.assert_called_once()
+        self.notify.assert_called_once()
+        self.assertFalse(value.pause_flag)
+        self.assertNotIn('notification_error',value.run_report.snapshot())
+
     def test_verification_during_score_recheck_stops_before_later_tasks(self):
         value = self.value
         value.read_learning_score = Mock(side_effect=[{'选读文章': score(0), '视听学习': score(0)},

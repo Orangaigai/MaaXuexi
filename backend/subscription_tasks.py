@@ -4,6 +4,7 @@ import time
 import json
 from pathlib import Path
 from PIL import Image
+from maa.pipeline import JOCR
 from daily_flow import verification_visible, daily_scene, profile_page
 from home_navigation import home_ready
 from task_support import TaskIncomplete, HumanRequired, is_complete
@@ -213,6 +214,46 @@ class SubscriptionTasks:
         self._score_refresh_required = True
         return self.read_learning_score(['订阅'])['订阅']
 
+    def _sub_catalog_account(self, records, button):
+        """Read only the header beside a recognized button, on the same frame."""
+        if subscription_scene(records) != 'catalog' or button not in records:
+            return None
+        image = self.tasker.controller.cached_image
+        if image is None or image.shape[:2] != (1280,720):
+            return None
+        self._check_active()
+        self._guard_verification(records)
+        if not self._app_in_foreground():
+            raise TaskIncomplete('识别订阅账号时应用不在前台')
+        _,y,_,height = button['box']
+        # Exclude the logo, category rail, article text and right-hand button.
+        top = max(120,round(y+height/2)-30)
+        detail = self.tasker.post_recognition('OCR',JOCR(roi=[208,top,392,60]),image).wait().get()
+        if detail is None or detail.status.failed or not detail.nodes:
+            return None
+        headers = [dict(text=row.text,box=list(row.box))
+                   for row in getattr(detail.nodes[0].recognition,'all_results',[])]
+        accounts = subscription_accounts(headers+[button])
+        return accounts[0] if len(accounts)==1 else None
+
+    def _sub_named_account(self, records, name, state):
+        if subscription_scene(records) != 'catalog':
+            return None
+        matches = [a for a in subscription_accounts(records) if a['name']==name and a['state']==state]
+        if len(matches)==1:
+            return matches[0]
+        if matches:
+            return None
+        # Full-screen OCR sometimes merges a short account name into its logo.
+        # A state change alone is insufficient: confirm the exact name locally.
+        for button in records:
+            if (re.sub(r'\s+','',button['text'])==state and button['box'][0]>=600
+                    and 120<button['box'][1]<1190):
+                account = self._sub_catalog_account(records,button)
+                if account and account['name']==name:
+                    matches.append(account)
+        return matches[0] if len(matches)==1 else None
+
     def _sub_candidate(self, store):
         self._sub_catalog()
         start = getattr(self, '_sub_category_cursor', 0)
@@ -234,8 +275,10 @@ class SubscriptionTasks:
                 signature = tuple((a['name'],a['state']) for a in accounts)
                 for account in accounts:
                     if account['state'] == '订阅' and store.eligible(account['name'], account['kind']):
-                        account['category_index'] = category_index
-                        return account
+                        precise = self._sub_catalog_account(records,account['button'])
+                        if precise and store.eligible(precise['name'],precise['kind']):
+                            precise['category_index'] = category_index
+                            return precise
                 if not accounts or signature in seen_pages:
                     break
                 seen_pages.add(signature)
@@ -265,20 +308,18 @@ class SubscriptionTasks:
 
     def _sub_follow(self, account, store, before):
         records = self._sub_records()
-        candidates = [a for a in subscription_accounts(records)
-                      if a['name'] == account['name'] and a['state'] == '订阅']
-        if subscription_scene(records) != 'catalog' or len(candidates) != 1:
+        candidate = self._sub_named_account(records,account['name'],'订阅')
+        if candidate is None:
             self._sub_evidence('candidate-changed',records)
             raise TaskIncomplete('订阅账号位置或状态已改变，未发送订阅')
         store.begin(account['name'], account['kind'])
         self._sub_verification_seen = False
         self.send_log('订阅：'+account['name']+'；随后单独核分')
-        self._sub_click(candidates[0]['button'])
+        self._sub_click(candidate['button'])
         # The verification WebView may load after the tap has returned. Stay on
         # this request until the named account is visibly followed; do not leave
         # a blank/loading frame to check scores and cancel a pending follow.
-        saved=self._sub_wait(lambda rows:subscription_scene(rows)=='catalog' and any(
-            a['name']==account['name'] and a['state']=='已订阅' for a in subscription_accounts(rows)))
+        saved=self._sub_wait(lambda rows:self._sub_named_account(rows,account['name'],'已订阅'))
         self._sub_evidence('follow-saved',saved)
         membership_saved=self._sub_follow_saved(account['name'])
         self.send_log(('已确认关注保存：' if membership_saved else '关注列表尚未确认：')
@@ -309,11 +350,19 @@ class SubscriptionTasks:
         matches = [r for r in records if 175 <= r['box'][1] < 1175
                    and re.sub(r'\s+','',r['text']) == name]
         if len(matches) == 1:
-            self.send_log('已在我的订阅确认关注保存：'+name)
-            return True
+            button = self._sub_list_button(records,name)
+            if button is not None:
+                saved = button['text'].strip()=='已订阅'
+                if saved:
+                    self.send_log('已在我的订阅确认关注保存：'+name)
+                return saved
         if any(r['text'].strip() == '暂无更多内容' for r in records):
             return False
-        raise TaskIncomplete('验证后非空列表未能唯一定位新增关注，保留记录和页面')
+        if any(90<=r['box'][0]<590 and 175<=r['box'][1]<1175 for r in records):
+            # Cancelled rows may stay visible with a Subscribe button. Scan this
+            # loaded list for the exact followed account before checking points.
+            return self._sub_find_owned(name) is not None
+        raise TaskIncomplete('验证后订阅列表未加载，保留记录和页面')
 
     def _sub_loaded_mine(self):
         return self._sub_wait(lambda rows:subscription_scene(rows)=='mine' and any(

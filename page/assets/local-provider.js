@@ -177,10 +177,13 @@
         else if(health.paused)text=health.manual_paused?'任务已暂停，点击“继续执行”恢复。':'请在模拟器处理验证或提示，完成后会自动继续。';
         else text=run?.phase||'正在准备任务…';
       }else if(run?.status==='completed')text='本轮任务已结束，积分已核对。';
-      else if(health.can_continue)text='还有任务未完成，可点击“继续执行”补做。';
+      else if(health.can_continue){
+        const remaining=(run?.unfinished_tasks||[]).join('、');
+        text='本轮已结束'+(remaining?'；待补做：'+remaining:'，还有任务未完成')+'。点击“继续执行”补做，已满分项目会跳过。';
+      }
       else if(health.last_error)text='任务未完成，请查看每日积分中的任务详情。';
       $('status').textContent=text;renderProvider();
-      document.title=(health.history_import?.active?'[导入中] ':health.task_running?(health.paused?'[已暂停] ':'[运行中] '):health.can_continue?'[待继续] ':'')+'MaaXuexi · 任务控制台';
+      document.title=(health.history_import?.active?'[导入中] ':health.task_running?(health.paused?'[已暂停] ':'[运行中] '):health.can_continue?'[待补做] ':'')+'MaaXuexi · 任务控制台';
     }catch{if(ticket!==refreshRevision)return;health=null;$('status').textContent='后台暂未连接，正在等待恢复…';
       $('connection').textContent='正在重连后台';$('connection').dataset.state='offline';$('connection').title='暂未读到新状态，页面会自动重连。';}
     controls();

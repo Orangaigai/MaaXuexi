@@ -89,6 +89,66 @@ class HistoryTests(unittest.TestCase):
 
 
 class RecognitionTests(unittest.TestCase):
+    def catalog_with_missing_name(self, local_names=('求是网',)):
+        from types import SimpleNamespace
+        import numpy as np
+        rows=[dict(text='强国号',box=[245,65,80,32]),
+              dict(text='地方平台',box=[365,68,105,30]),
+              dict(text='已订阅',box=[630,143,70,22])]
+        value=SubscriptionTasks();value.tasker=Mock()
+        value.tasker.controller.cached_image=np.zeros((1280,720,3),dtype=np.uint8)
+        value._check_active=Mock();value._guard_verification=Mock()
+        value._app_in_foreground=Mock(return_value=True)
+        value.tasker.post_recognition.return_value.wait.return_value.get.return_value=SimpleNamespace(
+            status=SimpleNamespace(failed=False),nodes=[SimpleNamespace(recognition=SimpleNamespace(
+                all_results=[SimpleNamespace(text=name,box=[219+i*150,144,100,25])
+                             for i,name in enumerate(local_names)]))])
+        return value,rows
+
+    def test_followed_button_with_missing_full_screen_name_uses_same_frame_header(self):
+        value,rows=self.catalog_with_missing_name()
+        self.assertEqual(subscription_accounts(rows),[])
+        account=value._sub_named_account(rows,'求是网','已订阅')
+        self.assertEqual(account['name'],'求是网')
+        value.tasker.post_recognition.assert_called_once()
+        kind,parameters,image=value.tasker.post_recognition.call_args.args
+        self.assertEqual(kind,'OCR');self.assertEqual(parameters.roi,[208,124,392,60])
+        self.assertIs(image,value.tasker.controller.cached_image)
+        value.tasker.controller.post_screencap.assert_not_called()
+        value.tasker.controller.post_click.assert_not_called()
+
+    def test_button_state_alone_or_other_name_never_confirms_a_follow(self):
+        for names in [(),('其他账号',),('求是网','其他账号')]:
+            with self.subTest(names=names):
+                value,rows=self.catalog_with_missing_name(names)
+                self.assertIsNone(value._sub_named_account(rows,'求是网','已订阅'))
+                value.tasker.controller.post_click.assert_not_called()
+
+    def test_local_header_not_read_through_verification_or_wrong_page(self):
+        value,rows=self.catalog_with_missing_name()
+        self.assertIsNone(value._sub_named_account(rows[2:],'求是网','已订阅'))
+        rows.append(dict(text='访问验证',box=[303,134,113,31]))
+        self.assertIsNone(value._sub_named_account(rows,'求是网','已订阅'))
+        value.tasker.post_recognition.assert_not_called()
+
+    def test_readable_exact_name_does_not_need_another_ocr(self):
+        value,rows=self.catalog_with_missing_name()
+        rows.append(dict(text='求是网',box=[219,144,100,25]))
+        self.assertIsNotNone(value._sub_named_account(rows,'求是网','已订阅'))
+        value.tasker.post_recognition.assert_not_called()
+
+    def test_candidate_uses_local_header_identity_before_journalling(self):
+        value,rows=self.catalog_with_missing_name(('重庆党建',))
+        rows[2]['text']='订阅'
+        rows.append(dict(text='网求是网',box=[213,144,100,25]))
+        value._sub_catalog=Mock();value._sub_records=Mock(return_value=rows)
+        value._sub_select_category=Mock()
+        store=Mock();store.eligible.return_value=True
+        account=value._sub_candidate(store)
+        self.assertEqual(account['name'],'重庆党建')
+        store.eligible.assert_any_call('重庆党建','强国号')
+        store.begin.assert_not_called()
+
     def test_cancelled_row_can_remain_visible_with_subscribe_button(self):
         rows=json.loads((FIXTURES/'mine-merged-button.json').read_text('utf-8'))
         value=SubscriptionTasks()
@@ -462,7 +522,7 @@ class FlowTests(unittest.TestCase):
     def test_cached_empty_list_waits_for_the_new_follow(self):
         header=[dict(text='我的订阅',box=[307,55,104,31]),dict(text='添加',box=[641,53,58,34])]
         empty=header+[dict(text='暂无更多内容',box=[295,683,129,27])]
-        ready=header+[dict(text='频道',box=[105,200,120,25])]
+        ready=header+[dict(text='频道',box=[105,200,120,25]),dict(text='已订阅',box=[622,223,75,26])]
         self.value._sub_mine=Mock();self.value._sub_records=Mock(side_effect=[empty,ready])
         self.value._sleep=Mock()
         self.assertTrue(self.value._sub_follow_saved('频道'))
@@ -477,6 +537,22 @@ class FlowTests(unittest.TestCase):
         self.assertFalse(self.value._sub_wait.call_args.kwargs['required'])
         self.value._sub_records.return_value=header
         with self.assertRaises(TaskIncomplete):self.value._sub_follow_saved('频道')
+
+    def test_expired_follow_with_an_old_cancelled_row_still_reaches_score_check(self):
+        rows=[dict(text='我的订阅',box=[307,55,104,31]),dict(text='添加',box=[641,53,58,34]),
+              dict(text='旧账号',box=[103,201,90,33]),dict(text='订阅',box=[637,222,45,27])]
+        value=self.value;value._sub_mine=Mock();value._sub_wait=Mock(return_value=None)
+        value._sub_records=Mock(return_value=rows);value._sleep=Mock();value.tasker=Mock()
+        value._sub_loaded_mine=Mock(return_value=rows)
+        self.assertFalse(value._sub_follow_saved('新账号'))
+        value.tasker.controller.post_swipe.assert_called_once()
+        value.tasker.controller.post_click.assert_not_called()
+
+    def test_cancelled_named_row_is_not_mistaken_for_saved_follow(self):
+        rows=[dict(text='我的订阅',box=[307,55,104,31]),dict(text='添加',box=[641,53,58,34]),
+              dict(text='频道',box=[103,201,90,33]),dict(text='订阅',box=[637,222,45,27])]
+        self.value._sub_mine=Mock();self.value._sub_wait=Mock(return_value=rows)
+        self.assertFalse(self.value._sub_follow_saved('频道'))
 
     def test_cleanup_does_not_treat_an_unloaded_header_as_an_empty_list(self):
         header=[dict(text='我的订阅',box=[307,55,104,31]),dict(text='添加',box=[641,53,58,34])]
