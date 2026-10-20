@@ -89,7 +89,7 @@ class StartupTests(unittest.TestCase):
                 return SimpleNamespace(returncode=0, stdout="1")
             return SimpleNamespace(returncode=0, stdout="unable to connect")
         with patch.object(Path, "read_text", return_value=self.config()), patch.object(Path,"is_file",return_value=True), \
-             patch.object(device_support,"command",side_effect=run), patch.object(device_support,"online",side_effect=[False,True]), \
+             patch.object(device_support,"command",side_effect=run), patch.object(device_support,"online",side_effect=[False,True,True]), \
              patch.object(device_support.time,"sleep"):
             adb,address = device_support.prepare_emulator(Mock(),Mock())
         self.assertEqual(address,"127.0.0.1:16384")

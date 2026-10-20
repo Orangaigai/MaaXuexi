@@ -5,6 +5,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 
 def show_failure(log_path):
@@ -14,6 +15,18 @@ def show_failure(log_path):
 
 def run_launcher(root, *, daily=False, check_only=False, no_browser=False, notify=True):
     root = Path(root).resolve()
+    sys.path.insert(0, str(root / 'backend'))
+    try:
+        from local_preferences import read_preferences
+        preferences = read_preferences(root / 'config/local-preferences.json')
+    except ImportError:
+        # Still launch/log/show a useful startup error if the backend files are missing.
+        preferences = dict(open_console_on_schedule=False, notifications=True)
+    if daily and not preferences['open_console_on_schedule']:
+        no_browser = True
+    # Explicitly launched startup errors remain visible; automatic reminders obey the switch.
+    if daily and not preferences['notifications']:
+        notify = False
     log_root = root / 'logs'
     log_root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')

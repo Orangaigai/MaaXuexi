@@ -6,6 +6,7 @@
 | 配置模拟器、DeepSeek 或观点功能 | [配置说明](configuration.md) |
 | 执行、保存、暂停、继续和定时 | [使用指南](usage.md) |
 | 启动失败、端口冲突、验证与网络错误 | [常见问题](troubleshooting.md) |
+| 后台运行、窗口提醒及桌面通知 | [窗口与通知设置](window-settings.md) |
 | 修改代码、运行测试和维护发布 | [开发说明](development.md) |
 | 了解任务、识别与状态如何衔接 | [模块说明](architecture.md) |
 | 了解视觉读取限制及后续设置入口 | [改进计划](roadmap.md) |

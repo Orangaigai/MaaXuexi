@@ -19,6 +19,24 @@ spec.loader.exec_module(launcher)
 
 @unittest.skipUnless(os.name == 'nt', 'Windows GUI launcher')
 class HiddenLauncherTests(unittest.TestCase):
+    def test_daily_start_is_quiet_by_default_but_manual_start_still_opens_console(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch.object(launcher.subprocess,'run',return_value=subprocess.CompletedProcess([],0)) as run:
+                launcher.run_launcher(temporary,daily=True)
+                self.assertIn('-NoBrowser',run.call_args.args[0])
+                launcher.run_launcher(temporary)
+                self.assertNotIn('-NoBrowser',run.call_args.args[0])
+
+    def test_daily_console_and_failure_notice_obey_independent_settings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);(root/'config').mkdir()
+            (root/'config/local-preferences.json').write_text(json.dumps(dict(
+                open_console_on_schedule=True,notifications=False)),encoding='utf-8')
+            with patch.object(launcher.subprocess,'run',return_value=subprocess.CompletedProcess([],1)) as run, \
+                 patch.object(launcher,'show_failure') as failure:
+                self.assertEqual(launcher.run_launcher(root,daily=True),1)
+                self.assertNotIn('-NoBrowser',run.call_args.args[0]);failure.assert_not_called()
+
     def test_daily_task_results_do_not_show_a_startup_failure_modal(self):
         for code in (0,2,3):
             with self.subTest(code=code), tempfile.TemporaryDirectory() as temporary:

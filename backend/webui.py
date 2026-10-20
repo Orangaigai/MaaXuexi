@@ -29,6 +29,7 @@ from schedule_support import ScheduleOptions, read_schedule, save_schedule, set_
 from points_history import PointsHistory
 from history_import import HistoryImport
 from completion_actions import CompletionActions, read_options, save_options
+from local_preferences import LocalPreferences, read_preferences, save_preferences
 
 class CompletionOptions(BaseModel):
     auto_close: StrictBool
@@ -187,6 +188,42 @@ def api_key_page():
     html=Path('backend/api-key.html').read_text('utf-8')
     html=html.replace('/assets/key-setup.js','/assets/key-setup.js?v='+VERSION)
     return HTMLResponse(html,headers={'Cache-Control':'no-store'})
+
+@app.get('/local/settings')
+def preferences_page():
+    html = Path('page/settings.html').read_text('utf-8')
+    for name in ('local-settings.js', 'history-import.js', 'settings.css', 'ui-base.css', 'console.css'):
+        html = html.replace('/assets/'+name, '/assets/'+name+'?v='+VERSION)
+    return HTMLResponse(html, headers={'Cache-Control':'no-store'})
+
+
+@app.get('/api/local/preferences')
+def get_preferences():
+    return dict(**read_preferences(), completion=read_options())
+
+
+@app.post('/api/local/preferences')
+def update_preferences(options: LocalPreferences):
+    with app_state.lock:
+        try:
+            value = save_preferences(options.model_dump())
+        except OSError as error:
+            raise HTTPException(503, '设置未保存，请检查本机文件权限。') from error
+        worker = app_state.worker
+        policy = getattr(worker, 'window_policy', None)
+        applied = bool(policy.apply()) if policy is not None and not app_state.history_import.running else False
+        return dict(**value, window_applied=applied,
+                    message='已保存，窗口偏好已应用。' if applied else '已保存，下次连接模拟器时应用。')
+
+
+@app.post('/api/local/window/show')
+def show_emulator_once():
+    from window_policy import WindowPolicy
+    policy = app_state.worker.window_policy if app_state.worker is not None else WindowPolicy()
+    if not policy.show_once():
+        raise HTTPException(409, '模拟器尚未启动，请先执行任务。')
+    return dict(status='success')
+
 
 @app.get('/api/settings')
 def get_settings():

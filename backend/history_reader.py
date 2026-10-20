@@ -86,6 +86,8 @@ class HistoryReaderMixin:
     def _wait_for_owner(self, reason='请本人完成当前登录或访问验证', resume_when=None):
         from daily_flow import verification_visible
         from home_navigation import login_required
+        if getattr(self, 'window_policy', None) is not None:
+            self.window_policy.attention()
         self.history_progress('waiting', reason)
         deadline = min(self.history_deadline, time.monotonic() + 120)
         while time.monotonic() < deadline:
@@ -95,6 +97,8 @@ class HistoryReaderMixin:
                 raise TaskIncomplete('平台登录或验证页面报告网络错误；请处理后重新导入。')
             if not login_required(rows) and not verification_visible(rows) and any(
                     re.search(r'学习积分|积分中心|积分明细|学习报表|^我的$', row['text']) for row in rows):
+                if getattr(self, 'window_policy', None) is not None:
+                    self.window_policy.resume()
                 self.history_progress('reading', '已恢复，继续读取积分记录')
                 return
             self._sleep(1)
@@ -220,6 +224,8 @@ class HistoryReaderMixin:
                 read_days=len(all_days), unconfirmed_days=len(all_days - verified.keys()),
                 date_from=min(verified), date_to=max(verified), source='screen_ocr_verified',**details)
         finally:
+            if getattr(self, 'window_policy', None) is not None:
+                self.window_policy.resume()
             self.tasker.post_stop()
             self.ai_resolver.session.close()
 

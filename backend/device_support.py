@@ -22,7 +22,7 @@ def online(adb_command):
         return False
 
 
-def prepare_emulator(progress, check_active, timeout=600):
+def prepare_emulator(progress, check_active, timeout=600, *, window_policy=None):
     config_path = Path("config/emulator.json")
     try:
         config = json.loads(config_path.read_text("utf-8-sig"))
@@ -34,6 +34,7 @@ def prepare_emulator(progress, check_active, timeout=600):
         raise TaskIncomplete("模拟器配置缺失，请检查 config/emulator.json") from None
     deadline = time.monotonic() + timeout
     launched = False
+    applied_window = None
     last_progress = -15
     started = time.monotonic()
     progress("正在检查模拟器并连接设备")
@@ -52,6 +53,14 @@ def prepare_emulator(progress, check_active, timeout=600):
                 last_progress = elapsed
             time.sleep(0.5)
             continue
+        # Apply as soon as a new native window exists, including during a cold boot.
+        identity = (info.get('main_wnd'), info.get('pid'))
+        if identity[0] and identity != applied_window:
+            if window_policy is None:
+                from window_policy import WindowPolicy
+                window_policy = WindowPolicy()
+            if window_policy.apply(info):
+                applied_window = identity
         if not info.get("is_process_started") and not launched:
             progress("正在启动模拟器，等待 Android 就绪")
             launched = True
@@ -83,16 +92,15 @@ def prepare_emulator(progress, check_active, timeout=600):
             if boot is not None:
                 if boot.returncode == 0 and boot.stdout.strip() == "1":
                     check_active()
-                    progress("正在显示模拟器窗口")
-                    try:
-                        shown = command([cli, "control", "-v", index, "show_window"], timeout=3).returncode == 0
-                    except (OSError, subprocess.SubprocessError):
-                        shown = False
-                    check_active()
-                    if not shown:
+                    # ADB/MuMu capture is independent of desktop focus. Do not show_window.
+                    if window_policy is None:
+                        from window_policy import WindowPolicy
+                        window_policy = WindowPolicy()
+                    if identity != applied_window and not window_policy.apply(info):
                         if not online(base):
-                            raise TaskIncomplete("显示模拟器窗口时设备连接已中断")
-                        progress("MuMu显示窗口命令未确认，但Android/ADB仍在线；继续连接现有设备")
+                            raise TaskIncomplete("应用窗口偏好时设备连接已中断")
+                        progress("窗口偏好暂未应用，但Android/ADB仍在线；继续连接现有设备")
+                    check_active()
                     return str(adb), address
         time.sleep(0.5)
     raise TaskIncomplete("等待模拟器连接超时，请检查 MuMu 启动提示后重新执行")

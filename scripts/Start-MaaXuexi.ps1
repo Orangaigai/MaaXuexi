@@ -157,8 +157,10 @@ function Show-EmulatorWindow([string]$CliPath, [string]$VmIndex, [int]$TimeoutMi
     if ($VmIndex -notmatch '^\d+$') { throw 'Invalid MuMu instance index.' }
     $process = New-Object Diagnostics.Process
     $process.StartInfo = New-Object Diagnostics.ProcessStartInfo
-    $process.StartInfo.FileName = $CliPath
-    $process.StartInfo.Arguments = 'control -v '+$VmIndex+' show_window'
+    $process.StartInfo.FileName = Join-Path $appRoot '.venv\Scripts\python.exe'
+    $policyPath = Join-Path $appRoot 'backend\window_policy.py'
+    $process.StartInfo.Arguments = '"'+$policyPath+'"'
+    $process.StartInfo.WorkingDirectory = $appRoot
     $process.StartInfo.UseShellExecute = $false
     $process.StartInfo.CreateNoWindow = $true
     $process.StartInfo.RedirectStandardOutput = $true
@@ -211,6 +213,7 @@ function Connect-ConfiguredEmulator {
     $bootStarted = Get-Date
     $bootDeadline = $bootStarted.AddSeconds(600)
     $lastProgress = $bootStarted.AddSeconds(-15)
+    $managedWindow = ''
     do {
         $activeTask = Test-ActiveLocalTask -AllowTransientFailure
         if ($null -eq $activeTask) {
@@ -226,6 +229,9 @@ function Connect-ConfiguredEmulator {
             return
         }
         try { $vmInfo = Read-EmulatorInfo } catch { $vmInfo = $null }
+        if ($vmInfo -and $vmInfo.main_wnd -and [string]$vmInfo.main_wnd -ne $managedWindow) {
+            if (Show-EmulatorWindow $cliPath $vmIndex) { $managedWindow = [string]$vmInfo.main_wnd }
+        }
         if ($vmInfo -and $vmInfo.adb_port) {
             $adbHost = [string]$vmInfo.adb_host_ip
             if (!$adbHost) { $adbHost='127.0.0.1' }
@@ -250,7 +256,7 @@ function Connect-ConfiguredEmulator {
         if (Test-ActiveLocalTask) { Write-Host 'The running task already handles the emulator.'; return }
         $deviceState = Invoke-AdbProbe $adbPath $address State
         if ($deviceState.ExitCode -ne 0 -or $deviceState.StdOut -ne 'device') { throw 'The emulator disconnected while its window was being shown.' }
-        Write-Host 'MuMu window display was not confirmed, but Android/ADB is online. Continuing with the existing device.'
+        Write-Host 'Window preferences could not be confirmed; Android/ADB is online. Continuing without forcing focus.'
     }
 
     $selectedDevice = $null

@@ -10,6 +10,8 @@ h1 span { margin-left: 10px; padding-left: 13px; border-left: 1px solid #d7dfea;
 .header-actions nav { display: flex; align-items: center; gap: 20px; }
 .header-actions a { display: inline-flex; align-items: center; min-height: 36px; color: #526780; font-size: 12px; text-decoration: none; white-space: nowrap; }
 .header-actions a:hover { color: var(--blue); }
+.settings-link { gap: 5px; }
+.settings-link .icon { width: 15px; height: 15px; flex-basis: 15px; }
 .connection-badge { padding: 0 0 0 20px; border-left: 1px solid var(--line); border-radius: 0; color: var(--muted); background: transparent; }
 .connection-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #7993b5; margin-right: 2px; }
 .connection-badge[data-state=device]::before { background: var(--green); }

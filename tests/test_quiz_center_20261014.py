@@ -89,11 +89,11 @@ class WindowDisplayTests(unittest.TestCase):
              patch.object(device_support,'command',side_effect=command), \
              patch.object(device_support,'online',side_effect=[True,connected]):
             if connected:
-                self.assertEqual(device_support.prepare_emulator(progress,Mock()), ('adb.exe','127.0.0.1:16384'))
+                self.assertEqual(device_support.prepare_emulator(progress,Mock(),window_policy=Mock(apply=Mock(return_value=False))), ('adb.exe','127.0.0.1:16384'))
                 self.assertIn('仍在线', progress.call_args.args[0])
             else:
                 with self.assertRaisesRegex(TaskIncomplete, '连接已中断'):
-                    device_support.prepare_emulator(progress,Mock())
+                    device_support.prepare_emulator(progress,Mock(),window_policy=Mock(apply=Mock(return_value=False)))
 
 
 if __name__ == '__main__':

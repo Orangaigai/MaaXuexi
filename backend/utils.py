@@ -24,6 +24,8 @@ from task_support import ALIASES, RunReport, TaskCancelled, TaskIncomplete, Task
 from datetime import datetime
 from pathlib import Path
 from device_support import online, prepare_emulator
+from local_preferences import desktop_notification
+from window_policy import WindowPolicy
 from fun_challenge import FunChallenge
 from daily_hints import question_from_records, exact_hint_choice, exact_hint_parts
 from daily_text import choice_page, complete_hint, request_text
@@ -288,6 +290,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         self.queue = queue
         self.tasker = Tasker()
         self.connected = False
+        self.window_policy = WindowPolicy()
         self.api_key = api_key
         self.ai_resolver = AIResolver(
             api_key=api_key,
@@ -331,7 +334,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 self.run_report.update(phase=message)
             self.send_log(message)
         self.connected = False
-        adb, address = prepare_emulator(progress, self._check_active)
+        policy = getattr(self, "window_policy", None)
+        adb, address = prepare_emulator(progress, self._check_active, window_policy=policy)
         progress("正在连接自动操作控制器")
         devices = Toolkit.find_adb_devices()
         device = next((item for item in devices if item.address == address), None)
@@ -363,10 +367,13 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             report.update(status="paused", pause_reason=reason, resume_automatically=resume_when is not None,
                           pause_kind='manual' if manual else 'verification')
         self.send_log("任务暂停：" + reason)
+        policy = getattr(self, 'window_policy', None)
+        if not manual and policy is not None:
+            policy.attention()
         try:
             if not manual:
                 message = "请在 MuMu 本人处理验证或登录，完成后程序自动继续" if resume_when is not None else "任务暂停，请查看模拟器提示并在网页继续"
-                plyer.notification.notify(title="MaaXuexi", message=message, app_name="MaaXuexi", timeout=60)
+                desktop_notification(plyer.notification.notify, title="MaaXuexi", message=message, app_name="MaaXuexi", timeout=60)
         except Exception as error:
             if report:
                 report.update(notification_error=type(error).__name__)
@@ -407,6 +414,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             self.pause_flag = False
             self._manual_hold = False
             self._verification_wait_active = False
+            if not manual and policy is not None:
+                policy.resume()
         self._check_active()
         if report:
             report.update(status="running", pause_reason=None, resume_automatically=False, pause_kind=None)
@@ -437,7 +446,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         )
         status = controller.post_connection().wait().succeeded
         if not status:
-            plyer.notification.notify(
+            desktop_notification(plyer.notification.notify,
                 title="MaaXuexi",
                 message="设备连接失败，请检查终端日志",
                 app_name="MaaXuexi",
@@ -453,7 +462,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             if not open_from_launcher or not self._open_from_android_launcher():
                 self.send_log("设备已连接，保留当前页面；开始任务后自动导航")
         else:
-            plyer.notification.notify(
+            desktop_notification(plyer.notification.notify,
                 title="MaaXuexi",
                 message="设备连接失败，请检查终端日志",
                 app_name="MaaXuexi",
@@ -694,13 +703,14 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         if report.get("reason"):
             message += report["reason"][:80] + "。"
         message += "可在控制台点击“继续执行”补做，已满分项目会跳过。"
-        self.run_report.update(attention_message=message, notification_attempted=True)
+        self.run_report.update(attention_message=message, notification_attempted=False)
         self.send_log(message)
         try:
             title = "MaaXuexi 本轮结束，有待补做任务" if report['status']=='partial' else "MaaXuexi 待处理"
-            plyer.notification.notify(title=title, message=message[:220], app_name="MaaXuexi", timeout=60)
+            sent = desktop_notification(plyer.notification.notify, title=title, message=message[:220], app_name="MaaXuexi", timeout=60)
+            self.run_report.update(notification_attempted=sent, notification_suppressed=not sent)
         except Exception as error:
-            self.run_report.update(notification_error=type(error).__name__)
+            self.run_report.update(notification_error=type(error).__name__, notification_attempted=True)
             self.send_log("桌面通知未能显示，待处理清单已保留在控制台和最近运行记录中")
 
     def _check_active(self):
@@ -1629,7 +1639,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         text_positions = self._scan_click_options()
         if not text_positions:
             self.send_log("[点选填空题] 未识别到选项, 请求接管")
-            plyer.notification.notify(
+            desktop_notification(plyer.notification.notify,
                 title="MaaXuexi",
                 message="未识别到选项文本",
                 app_name="MaaXuexi",
@@ -1663,7 +1673,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                     print(f'[点选填空题] "{text}" 选中成功')
             else:
                 self.send_log(f'[点选填空题] "{text}" 选中失败, 请求接管')
-                plyer.notification.notify(
+                desktop_notification(plyer.notification.notify,
                     title="MaaXuexi",
                     message=f'选项 "{text}" 选中失败',
                     app_name="MaaXuexi",
