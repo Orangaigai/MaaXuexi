@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 
 SOURCE = Path(__file__).resolve().parents[1]/'scripts/Launch-Hidden.py'
+sys.path.insert(0,str(SOURCE.parents[1]/'backend'))
 spec = importlib.util.spec_from_file_location('maa_hidden_launcher', SOURCE)
 launcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launcher)
@@ -22,9 +23,9 @@ class HiddenLauncherTests(unittest.TestCase):
     def test_daily_start_is_quiet_by_default_but_manual_start_still_opens_console(self):
         with tempfile.TemporaryDirectory() as temporary:
             with patch.object(launcher.subprocess,'run',return_value=subprocess.CompletedProcess([],0)) as run:
-                launcher.run_launcher(temporary,daily=True)
+                launcher.run_launcher(Path(temporary)/'daily',daily=True)
                 self.assertIn('-NoBrowser',run.call_args.args[0])
-                launcher.run_launcher(temporary)
+                launcher.run_launcher(Path(temporary)/'manual')
                 self.assertNotIn('-NoBrowser',run.call_args.args[0])
 
     def test_daily_console_and_failure_notice_obey_independent_settings(self):

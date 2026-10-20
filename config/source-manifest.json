@@ -253,7 +253,7 @@
   "tests/test_four_player.py": "80c6ecd431af4cf7ed60a495731cd7a940b72325af142e9cf4607e4b104cb8d7",
   "tests/test_full_flow_order.py": "2896681b6fc5a2ff08a5e5d62d4b6b0adb41f2009e4777a24f5edd4c14fb4139",
   "tests/test_fun_challenge.py": "af0fdabba85c5889b4d7b73565564b1976cfd235893d543cdd9135582f940711",
-  "tests/test_hidden_launcher.py": "0cff7bd6bccace526573e11413a8bf200a575f6c49c22a3259b341e59bf78c63",
+  "tests/test_hidden_launcher.py": "191a903a138a4557d003d4acbb96522efefb154c53bef5bfa8c94587d5f17a30",
   "tests/test_hints_observability.py": "aa775640fdaaf9fda7f8efb15b0cbea8c90ecf2a6ad75b06e11c126bda717f4a",
   "tests/test_history_import.py": "cf4584570373b5c0567081f723de4a99db34b4630aa9e82437916e0b7fea4f21",
   "tests/test_history_ledger.py": "ed045a59a610f965dadd204924e679ecbd0af07cb2fdf9a079cfb8c5938e2a5a",
