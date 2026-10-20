@@ -1,4 +1,4 @@
-"""Skip hints only when a complete question proves every choice must be used."""
+"""Recognize complete logical gaps in daily multi-choice stems."""
 import re
 import numpy as np
 from daily_hints import clean
@@ -19,15 +19,25 @@ def count_choice_gaps(records, image, options):
     sources=[r['box'][1]-8 for r in records if top<r['box'][1]<bottom
              and re.match(r'^(来源|出题|推荐单位)[：:]',r['text'].strip())]
     if sources:bottom=min(sources)
+    # Stop at the first paragraph's end, before reference screenshots. OCR in
+    # pictures must not add decorative lines to the stem's logical blanks.
+    rows=sorted((r for r in records if top<r['box'][1]<bottom and r['box'][3]>=24
+                 and r['text'].strip()),key=lambda r:r['box'][1])
+    if not rows:return None
+    end=rows[0]['box'][1]+rows[0]['box'][3]
+    for row in rows[1:]:
+        if row['box'][1]-end>45:break
+        end=max(end,row['box'][1]+row['box'][3])
+    bottom=min(bottom,end+20)
     if bottom<=top:return None
     pixels=image[top:bottom,55:665,:3].astype(np.int16)
     low,high=pixels.min(axis=2),pixels.max(axis=2)
-    mask=(low>=100)&(high<=220)&(high-low<=8)
+    mask=(low>=100)&(high<=220)&(high-low<=35)
     lines=[]
     for y in np.flatnonzero(mask.any(axis=1)):
         edges=np.diff(np.pad(mask[y].astype(np.int8),(1,1)))
         for left,right in zip(np.flatnonzero(edges==1),np.flatnonzero(edges==-1)):
-            if 22<=right-left<=250:
+            if 32<=right-left<=250:
                 x=int(left)+55;right=int(right)+55;absolute_y=int(y)+top
                 previous=next((line for line in reversed(lines) if line[0]==x and line[2]==right
                                and line[3]==absolute_y-1),None)
@@ -44,13 +54,12 @@ def count_choice_gaps(records, image, options):
     return len(lines)
 
 
-def all_options_from_gaps(page, records, image, options):
+def all_options_from_gaps(page, records, image, options, *, gap_count=None):
     if not page or page.get('question_type')!='多选题':return None
     text=clean(page.get('question',''))
-    # Equal counts alone don't exclude repeated answers or distractors.
-    if (re.search(r'并非|不是|不要求|无需|无须|不限|可重复|可以重复|允许重复|多次',text)
-            or not re.search(r'(?:每个选项|各选项|每项)(?:仅|只|限)(?:能|可)?(?:使用|填入|选用|用|选)?一次',text)):
+    if re.search(r'可重复|可以重复|允许重复|反义词|不是每个选项|不要求每个选项',text):
         return None
     letters=sorted(options)
     if not 2<=len(letters)<=6 or letters!=list('ABCDEF'[:len(letters)]):return None
-    return letters if count_choice_gaps(records,image,options)==len(letters) else None
+    count=count_choice_gaps(records,image,options) if gap_count is None else gap_count
+    return letters if count==len(letters) else None

@@ -96,13 +96,16 @@ class DailyTextTests(unittest.TestCase):
     def test_scroll_preserves_original_images_and_does_not_add_hint_ocr(self):
         value=worker();value._sleep=Mock();value._get_options=Mock(return_value=OPTIONS)
         value._get_red_texts=Mock(return_value=['不是精确选项'])
-        def read():value._screen_ocr_cache=(self.image,page());return page()
+        frames=iter([([r for r in page() if r['text']!='查看提示'],self.image),
+                     (page(),np.full_like(self.image,230))])
+        def read():
+            records,image=next(frames);value._screen_ocr_cache=(image,records);return records
         value._screen_records=Mock(side_effect=read)
         value.tasker.post_task.side_effect=[job(False),job(),job()]
         value.tasker.controller.post_screencap.return_value.wait.return_value.get.return_value=self.image
         images,_,_,_=value._prepare('单选题')
         self.assertEqual(len(images),3);self.assertIsNone(value._daily_choice_text)
-        value._screen_records.assert_called_once()
+        self.assertEqual(value._screen_records.call_count,2)
 
     def test_first_line_of_long_option_cannot_be_mistaken_for_whole_hint_match(self):
         value=worker();value._sleep=Mock();value._get_options=Mock(return_value=OPTIONS)

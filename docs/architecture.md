@@ -7,7 +7,7 @@
 | `home_navigation.py` / `score_navigation.py` | 确认主页、首次新鲜核分、积分页导航 |
 | `content_tasks.py` / `local_channel.py` | 文章、音视频和本地频道，实际进度与积分核对 |
 | `daily_flow.py` | 每日提交、本人验证等待、结果页与自动返回 |
-| `daily_hints.py` / `blank_hints.py` / `daily_text.py` / `daily_gaps.py` | 提示严格匹配、填空上下文、完整文本分流和有明确限用规则的多选快捷判断 |
+| `daily_hints.py` / `blank_hints.py` / `daily_text.py` / `daily_gaps.py` / `daily_choices.py` | 提示匹配、填空上下文、完整文本分流、多选空格计数和长图片选项的收集与点击 |
 | `fun_challenge.py` / `four_player.py` | 当日趣味模式、限时答案、结算与退出 |
 | `screen_reading.py` / `question_visual.py` | 完整画面读取、相同画面OCR复用、图片证据分流 |
 | `answer_client.py` / `timed_http.py` | 官方DeepSeek请求、结构化答案、限时取消和连接复用 |

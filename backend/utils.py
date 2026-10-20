@@ -27,7 +27,8 @@ from device_support import online, prepare_emulator
 from fun_challenge import FunChallenge
 from daily_hints import question_from_records, exact_hint_choice, exact_hint_parts
 from daily_text import choice_page, complete_hint, request_text
-from daily_gaps import all_options_from_gaps
+from daily_gaps import all_options_from_gaps, count_choice_gaps
+from daily_choices import scan_to_hint, select_scrolled_choices, visible_options
 from screen_reading import read_screen
 from blank_hints import blank_context, hint_paragraph, exact_blank_hint
 from diagnostics import RunDiagnostics, observed, record_time
@@ -1375,7 +1376,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
     def _prepare(self, question_type: str) -> tuple:
         """准备答题数据，返回 (截图列表, 选项OCR结果, 红字列表, 填空格子数)。
         流程：
-        1. 读取完整题面；多选仅在明确限用一次、空格与选项等量时跳过提示
+        1. 读取完整题面；多选确认完整空格与全部选项等量时可跳过提示
         2. [填空题] 统计文本框格子数 (_count_blanks)
         3. 查找"提示"按钮，未找到则下滑重试（下滑后重新扫描选项）
         4. 滚动截图找到提示区域
@@ -1387,22 +1388,27 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         self._daily_choice_page = None
         self._daily_choice_text = None
         self._daily_direct_choices = None
+        self._daily_choice_scroll_pages = 0
+        gap_count=None
         self._blank_context=None
         self._blank_hint_text=''
         if question_type in ("单选题", "多选题"):
             options = self._get_options()
             records = self._screen_records()
+            options.update(visible_options(records))
             self._choice_question_text = question_from_records(records,options)
             frame = getattr(self,'_screen_ocr_cache',None)
             if isinstance(frame,tuple) and len(frame)==2:
+                gap_count=count_choice_gaps(records,frame[0],options) if question_type=='多选题' else None
                 self._daily_choice_page = choice_page(records,frame[0],options,question_type)
                 if self._daily_choice_page:
                     options={letter:(text,options[letter][1])
                              for letter,text in self._daily_choice_page['options'].items()}
-                    direct=all_options_from_gaps(self._daily_choice_page,records,frame[0],options)
+                    direct=(all_options_from_gaps(self._daily_choice_page,records,frame[0],options)
+                            if getattr(self,'_daily_gap_shortcut_enabled',True) else None)
                     if direct:
                         self._daily_direct_choices=direct
-                        self.send_log('每日多选：题干明确每项限用一次，完整空格数与选项数相同，直接全选')
+                        self.send_log(f'每日多选：确认{len(direct)}个完整空格、{len(direct)}个选项，直接全选')
                         return [frame[0].copy()],options,[],0
         if question_type == "填空题":
             result: TaskDetail = self.tasker.post_task("文本框").wait().get()
@@ -1419,19 +1425,30 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         hint_found: TaskDetail = self.tasker.post_task("查找提示").wait().get()
         if hint_found.status.failed:
             self._daily_choice_page = None
-            self.tasker.controller.post_swipe(
-                randint(350, 360),
-                randint(990, 1000),
-                randint(540, 550),
-                randint(580, 590),
-                randint(1500, 2000),
-            ).wait()
-            self._sleep(0.5)
-            img_list.append(self.tasker.controller.post_screencap().wait().get())
-            if question_type in ("单选题", "多选题"):
-                new_options = self._get_options()
-                for k, v in new_options.items():
-                    options[k] = v
+            if question_type in ('单选题','多选题'):
+                self.send_log('每日答题：正在翻阅长题目，收集全部图片和选项')
+                initial_image=img_list[0]
+                images,options,complete,pages=scan_to_hint(self,records,initial_image,options)
+                img_list=images
+                self._daily_choice_scroll_pages=pages
+                direct=(all_options_from_gaps(dict(question_type=question_type,
+                            question=self._choice_question_text),[],initial_image,options,gap_count=gap_count)
+                        if complete and gap_count is not None and getattr(self,'_daily_gap_shortcut_enabled',True) else None)
+                self.send_log(f'长题目已读取{len(options)}个选项，共翻阅{pages}屏')
+                if direct:
+                    self._daily_direct_choices=direct
+                    self.send_log(f'每日多选：确认{gap_count}个完整空格、{len(options)}个选项，直接全选')
+                    return img_list,options,[],0
+            else:
+                self.tasker.controller.post_swipe(
+                    randint(350, 360),
+                    randint(990, 1000),
+                    randint(540, 550),
+                    randint(580, 590),
+                    randint(1500, 2000),
+                ).wait()
+                self._sleep(0.5)
+                img_list.append(self.tasker.controller.post_screencap().wait().get())
         hint_open = self.tasker.post_task("查看提示").wait().get()
         if hint_open.status.failed:
             raise TaskIncomplete("Quiz hint was not opened")
@@ -1541,6 +1558,9 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 self.send_log(f"提示匹配解答成功，答案为{''.join(answer)}")
             else:
                 self.send_log(f"AI解答成功，答案为{''.join(answer)}")
+            pages=getattr(self,'_daily_choice_scroll_pages',0)
+            if pages:
+                return select_scrolled_choices(self,answer,pages)
             failed = []
             for choice in answer:
                 result: TaskDetail = (

@@ -31,10 +31,10 @@ class GapTests(unittest.TestCase):
         page=choice_page(records,image,options,'多选题')
         self.assertEqual(all_options_from_gaps(page,records,image,options),['A','B'])
 
-    def test_equal_counts_without_single_use_instruction_do_not_prove_all_answers(self):
+    def test_repeated_answers_or_negated_single_use_keep_hints(self):
         for instruction in ('甲的反义词是____，甲的反义词也是____。',
                             '每个选项可以重复使用，分别填入____和____。',
-                            '不是每个选项仅用一次。', '请选择正确的两个答案。'):
+                            '不是每个选项仅用一次。'):
             records,image,options=sample(instruction)
             self.assertEqual(count_choice_gaps(records,image,options),2)
             page=choice_page(records,image,options,'多选题')
@@ -72,6 +72,7 @@ class GapTests(unittest.TestCase):
     def test_shortcut_reuses_existing_frame_and_never_opens_or_reads_hint(self):
         records,image,options=sample()
         value=worker();value._get_options=Mock(return_value=options)
+        value._daily_gap_shortcut_enabled=True
         value._screen_records=Mock(return_value=records);value._screen_ocr_cache=(image,records)
         value._get_red_texts=Mock();value.ai_resolver=Mock()
         images,choices,reds,blanks=value._prepare('多选题')
@@ -81,8 +82,37 @@ class GapTests(unittest.TestCase):
         value._screen_records.assert_called_once()
         value._get_red_texts.assert_not_called();value.ai_resolver.resolve_choice.assert_not_called()
 
+    def test_real_blue_grey_lines_above_reference_picture_count_four(self):
+        records,image,options=sample('通过四个信息栏了解就业岗位。')
+        image[:]=255
+        records[1]['box']=[61,317,594,159]
+        options={'A':('图片选项',[97,988,40,34])}
+        for left in (200,278,356,434):
+            image[439,left:left+55]=[186,179,171]
+            image[407:431,left-12:left-5]=20
+            image[407:431,left+58:left+65]=20
+        # The first reference screenshot starts much lower; exclude its lines.
+        records=[r for r in records if r['text'] not in ('来源：教材','A. 甲','B. 乙')]
+        records.append(dict(text='图片内标题',box=[180,586,180,30]))
+        image[600:602,200:400]=180
+        self.assertEqual(count_choice_gaps(records,image,options),4)
+        all_options={letter:('图片选项',[97,988,40,34]) for letter in 'ABCD'}
+        self.assertEqual(all_options_from_gaps(dict(question_type='多选题',question=records[1]['text']),
+                            records,image,all_options,gap_count=4),list('ABCD'))
+
+    def test_explicitly_disabled_shortcut_keeps_hint_path_for_same_question_benchmark(self):
+        records,image,options=sample()
+        value=worker();value._get_options=Mock(return_value=options)
+        value._daily_gap_shortcut_enabled=False
+        value._screen_records=Mock(return_value=records);value._screen_ocr_cache=(image,records)
+        value._sleep=Mock();value._get_red_texts=Mock(return_value=['甲'])
+        value.tasker.controller.post_screencap.return_value.wait.return_value.get.return_value=image
+        value._prepare('多选题')
+        self.assertIsNone(value._daily_direct_choices)
+
     def test_next_preparation_clears_previous_direct_answer(self):
         records,image,options=sample('选择正确答案。')
+        options['C']=('丙',[85,730,35,40])
         value=worker();value._get_options=Mock(return_value=options)
         value._screen_records=Mock(return_value=records);value._screen_ocr_cache=(image,records)
         value._daily_direct_choices=['A','B'];value._sleep=Mock();value._get_red_texts=Mock(return_value=['甲'])

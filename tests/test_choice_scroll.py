@@ -8,8 +8,14 @@ from test_optimization import worker,job
 class ChoiceScrollTests(unittest.TestCase):
     def test_hidden_hint_scrolls_then_keeps_options_and_reads_hint(self):
         value=worker();value._sleep=Mock()
-        value._get_options=Mock(side_effect=[{'A':('甲',[60,400,200,50])},{'B':('乙',[60,450,200,50])}])
-        value._screen_records=Mock(return_value=[dict(text='单选题',box=[70,200,120,40]),dict(text='请选择正确选项',box=[60,300,350,40])])
+        value._get_options=Mock(return_value={'A':('甲',[60,400,200,50])})
+        first=[dict(text='单选题',box=[70,200,120,40]),dict(text='请选择正确选项',box=[60,300,350,40])]
+        last=[dict(text='B. 乙',box=[97,450,200,34]),dict(text='查看提示',box=[550,1000,110,30])]
+        frames=iter([(first,np.zeros((1280,720,3),np.uint8)),
+                     (last,np.full((1280,720,3),220,np.uint8))])
+        def read():
+            rows,image=next(frames);value._screen_ocr_cache=(image,rows);return rows
+        value._screen_records=Mock(side_effect=read)
         value._get_red_texts=Mock(return_value=['甲'])
         value.tasker.post_task.side_effect=[job(False),job(),job()]
         value.tasker.controller.post_screencap.return_value.wait.return_value.get.return_value=np.zeros((1280,720,3),np.uint8)
