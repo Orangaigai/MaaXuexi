@@ -1,10 +1,10 @@
 (() => {
   'use strict';
-  const $=id=>document.getElementById(id);
+  const $=id=>document.getElementById(id),view=new window.MaaScheduleView($);
   const execution=[...document.querySelectorAll('input[name="executionMode"]')];
   const radios=[...document.querySelectorAll('input[name="scheduleMode"]')];
   const times=[$('fixedTime'),$('windowStart'),$('windowEnd')];
-  let health=null,saved=null,observedAt=0,loaded=false,busy=false,dirty=false,reading=false,revision=0,pendingAction='';
+  let health=null,saved=null,loaded=false,busy=false,dirty=false,reading=false,readFailed=false,revision=0,pendingAction='';
   const mode=()=>radios.find(input=>input.checked).value;
   const automatic=()=>execution.find(input=>input.checked)?.value==='automatic';
   const draft=()=>({mode:mode(),time:$('fixedTime').value,window_start:$('windowStart').value,window_end:$('windowEnd').value});
@@ -39,6 +39,7 @@
     $('scheduleEditState').classList.toggle('unsaved',dirty);
     $('scheduleReset').hidden=!dirty;$('scheduleReset').disabled=!dirty||busy||!active;
     $('scheduleNextLabel').textContent=dirty?'当前计划的下次执行':'距离下次执行';
+    window.dispatchEvent(new CustomEvent('maa:schedule-edit',{detail:{dirty,busy}}));
   }
   function edit(){
     dirty=edited();$('windowEnd').setCustomValidity('');$('scheduleMessage').textContent='';controls();
@@ -49,30 +50,15 @@
   };
   for(const radio of radios)radio.addEventListener('change',edit);
   for(const input of times)input.addEventListener('input',edit);
-  function countdown(){
-    if(!saved?.enabled||saved.seconds_until_next_run==null){
-      $('scheduleCountdown').textContent=saved?.enabled===false?'定时已关闭':'暂未读到计划';return;
-    }
-    const remaining=Math.max(0,Math.ceil(saved.seconds_until_next_run-(performance.now()-observedAt)/1000));
-    if(!remaining){$('scheduleCountdown').textContent=health?.task_running?'任务执行中，正在更新下一次时间':'计划时间已到，等待系统启动';return;}
-    const days=Math.floor(remaining/86400),hours=Math.floor(remaining%86400/3600);
-    const minutes=Math.floor(remaining%3600/60),seconds=remaining%60;
-    $('scheduleCountdown').textContent=`${days?days+'天 ':''}${hours}小时 ${minutes}分 ${seconds}秒后`;
-  }
+  function countdown(){view.render(health);}
   function display(plan,fill=false){
-    if(!plan.available)throw Error(plan.message||'定时状态未能读取。');
-    saved=plan;observedAt=performance.now();
+    view.set(plan);saved=plan;
     for(const input of execution)input.checked=input.value===(plan.enabled?'automatic':'manual');
     if(!loaded||fill||!dirty){
       fillFields(plan);
     }
     dirty=edited();
-    loaded=true;$('runMode').textContent=plan.enabled?'定时自动执行':'手动执行';
-    const timing=plan.mode==='random_window'?`每天 ${plan.window_start}～${plan.window_end} 内随机启动一次`:`每天 ${plan.time} 启动`;
-    $('schedule').textContent=plan.enabled?`已保存：${timing}。`:'定时启动已关闭，时间设置保留。';
-    const next=plan.enabled&&plan.next_run_at?new Date(plan.next_run_at):null;
-    $('scheduleNextTime').textContent=next&&Number.isFinite(next.getTime())
-      ?'预计 '+new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(next):'';
+    loaded=true;
     $('scheduleCatchup').textContent='电脑需开机、登录 Windows、未休眠且联网；关闭网页不停止任务。'+
       (plan.start_when_available?'错过后恢复会自动补跑，可能超出所设时段。':'错过后不补跑。');
     countdown();controls();
@@ -80,8 +66,8 @@
   async function refreshSchedule(){
     if(reading||busy)return;
     reading=true;const ticket=++revision;
-    try{const plan=await request('/api/local/schedule');if(ticket===revision)display(plan);}
-    catch(error){if(ticket===revision){$('executionMessage').dataset.tone='error';$('executionMessage').textContent=error.message;if(!loaded)$('runMode').textContent='执行方式暂未读到';}}
+    try{const plan=await request('/api/local/schedule');if(ticket===revision){display(plan);if(readFailed){$('executionMessage').textContent='';readFailed=false;}}}
+    catch(error){if(ticket===revision){readFailed=true;$('executionMessage').dataset.tone='error';$('executionMessage').textContent=error.message;view.fail();}}
     finally{reading=false;controls();}
   }
   for(const input of execution)input.addEventListener('change',async()=>{
@@ -108,6 +94,7 @@
   });
   window.addEventListener('maa:status',event=>{health=event.detail;controls();});
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshSchedule();});
+  window.addEventListener('pageshow',event=>{if(event.persisted)refreshSchedule();});
   request('/api/status').then(value=>{health=value;controls();}).catch(()=>{});
   controls();refreshSchedule();setInterval(countdown,1000);setInterval(refreshSchedule,15000);
 })();

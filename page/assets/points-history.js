@@ -7,7 +7,7 @@
     credited:'已领取',unavailable:'暂不可用',unverified:'待核实',incomplete:'待补做',failed:'未完成',
     stopped:'已中止',needs_human:'待本人处理',deferred:'待继续'};
   const done=new Set(['skipped_full','verified','credited']);
-  let month='',selected='',data=null,reading=false,revision=0,lastRun='',lastAction=null,saving=false,optionsLoaded=false;
+  let month='',selected='',data=null,reading=false,revision=0,lastRun='',lastAction=null;
   let ledgerRevision=0,ledgerKey='';
   const ledgerCache=new Map();
   async function request(path,body){
@@ -124,13 +124,6 @@
   }
   $('pointsPrevious').onclick=()=>move(-1);$('pointsNext').onclick=()=>move(1);
   $('pointsCurrent').onclick=()=>{month='';selected='';load();};
-  $('autoClose').onchange=async()=>{
-    const chosen=$('autoClose').checked;if(saving)return;saving=true;$('autoClose').disabled=true;
-    $('completionSettingMessage').dataset.tone='info';$('completionSettingMessage').textContent='保存中…';
-    try{const result=await request('/api/local/completion-options',{auto_close:chosen});$('autoClose').checked=result.auto_close;$('completionSettingMessage').dataset.tone='success';$('completionSettingMessage').textContent='已保存';}
-    catch(error){$('autoClose').checked=!chosen;$('completionSettingMessage').dataset.tone='error';$('completionSettingMessage').textContent=error.message;}
-    finally{saving=false;$('autoClose').disabled=lastAction?.state==='closing';}
-  };
   $('keepOpen').onclick=async()=>{
     $('keepOpen').disabled=true;
     try{await request('/api/local/completion/cancel',{});lastAction={state:'cancelled'};completion();}
@@ -154,14 +147,11 @@
       return;
     }
     lastAction=health.completion_action||null;completion();
-    $('autoClose').disabled=saving||!optionsLoaded||lastAction?.state==='closing';
     const run=health.run_summary,key=JSON.stringify([run?.run_id,run?.status,
       Object.entries(run?.tasks||{}).map(([name,row])=>[name,row.state,row.after?.value,row.reason])]);
     if(key!==lastRun&&!reading){lastRun=key;load();}
   });
   document.addEventListener('visibilitychange',()=>{if(!document.hidden&&!reading)load();});
   window.addEventListener('maa:points-changed',()=>{ledgerCache.clear();ledgerKey='';load();});
-  request('/api/local/completion-options').then(result=>{optionsLoaded=true;$('autoClose').checked=result.auto_close;$('autoClose').disabled=lastAction?.state==='closing';})
-    .catch(error=>{$('completionSettingMessage').textContent=error.message;});
   load();setInterval(()=>{if(!document.hidden)completion();},1000);
 })();

@@ -28,7 +28,7 @@
   const plan=()=>({tasklist:[...inputs].filter(([,input])=>input.checked).map(([name])=>name),fast_answer:false,debug:false});
   const selectionKey=tasks=>[...tasks].sort().join('|');
   function renderActionEmphasis(){
-    const configureFirst=provider?.configured===false&&plan().tasklist.some(name=>aiTasks.has(name));
+    const configureFirst=(provider?.configured===false||health?.api_key_configured===false)&&plan().tasklist.some(name=>aiTasks.has(name));
     const continueFirst=Boolean(health?.can_continue);
     $('start').classList.toggle('primary',!configureFirst&&!continueFirst);
     $('start').classList.toggle('accent',configureFirst||continueFirst);
@@ -75,7 +75,6 @@
     $('pause').textContent=requested?'正在暂停…':'暂停';
     $('resume').hidden=!health?.can_continue;$('resume').disabled=busy||importing||!health;
     $('stop').hidden=!running;$('stop').disabled=busy;
-    $('diagnose').disabled=diagnosing||running||importing||!health;
     $('connect').hidden=true;
     if(pendingButton==='pause')$('pause').textContent='正在暂停…';
     for(const[id,label]of Object.entries(buttonLabels)){
@@ -101,7 +100,7 @@
     const body=plan();
     if(!body.tasklist.length){$('actionMessage').dataset.tone='error';$('actionMessage').textContent='请至少选择一项任务。';return;}
     if(health?.api_key_configured===false&&body.tasklist.some(name=>aiTasks.has(name))){
-      $('actionMessage').dataset.tone='info';$('actionMessage').textContent='请先配置 DeepSeek 密钥，或先执行基础任务。';$('providerSetup').focus();return;
+      $('actionMessage').dataset.tone='info';$('actionMessage').textContent='请先配置 DeepSeek 密钥，或先执行基础任务。';$('providerNotice').hidden=false;$('providerSetup').focus();return;
     }
     act('/api/start',body,'已开始执行所选任务。','start');
   };
@@ -145,12 +144,14 @@
     const run=health?.run_summary,checked=Date.parse(provider?.validation?.checked_at||''),
       occurred=Date.parse(run?.finished_at||run?.started_at||'');
     const issue=Number.isFinite(occurred)&&Number.isFinite(checked)&&occurred>checked?providerFailure(run):null;
-    $('provider').textContent=provider?.validated?'已验证':provider?.configured?'待验证':provider?'待配置':'读取中';
+    const needsSetup=Boolean(provider&&!provider.validated)||health?.api_key_configured===false;
+    $('providerNotice').hidden=!issue&&!needsSetup;
+    $('provider').textContent=issue?'答题服务需要处理':provider?.configured?'答题服务待验证':'答题服务待配置';
     $('provider').classList.toggle('ready',Boolean(provider?.validated));
     $('provider').classList.toggle('attention',Boolean(provider&&!provider.validated));
     $('providerHint').textContent=issue?'最近任务：'+issue+'。详情见每日积分。':provider?.configured?
       '用于自动答题；开启观点时也会生成短评。':'自动答题需要先配置 DeepSeek API 密钥，也可先使用基础任务。';
-    $('providerSetup').textContent=provider?.configured?'管理密钥':'配置密钥';
+    $('providerSetup').textContent=provider?.configured?'检查答题服务':'配置答题服务';
     renderActionEmphasis();
   }
   async function refreshProvider(){
@@ -169,7 +170,6 @@
       health=response;$('connection').textContent=health.connected?'模拟器已连接':'本机服务已连接';
       $('connection').dataset.state=health.connected?'device':'online';
       $('connection').title=health.connected?'当前模拟器已连接。':'执行任务时会自动准备模拟器。';
-      $('version').textContent=health.local_version;
       const run=health.run_summary;let text='选择任务后即可开始。';
       if(health.history_import?.active)text='正在导入历史积分，学习任务将在导入结束后可用。';
       else if(health.task_running){
@@ -228,22 +228,15 @@
     socket.onclose=()=>setTimeout(openLog,4000);socket.onerror=()=>socket.close();
   }
   $('clearLog').onclick=()=>{lines=[];$('logs').textContent='';};
-  let diagnosing=false;
-  $('diagnose').onclick=async()=>{
-    if(diagnosing||health?.task_running||health?.history_import?.active)return;
-    diagnosing=true;$('diagnose').disabled=true;$('diagnosticsMessage').textContent='正在检查…';
-    try{
-      const result=await request('/api/local/diagnostics');$('diagnosticsResults').replaceChildren();
-      const labels={ok:'正常',warn:'提示',error:'需处理'};
-      for(const row of result.checks){
-        const item=document.createElement('li'),name=document.createElement('span'),message=document.createElement('span');
-        name.textContent=row.name;message.textContent=`${labels[row.state]} · ${row.message}`;
-        message.className=row.state;item.append(name,message);$('diagnosticsResults').append(item);
-      }
-      $('diagnosticsMessage').textContent=result.summary.error?`检查完成，${result.summary.error}项需要处理。`:'检查完成。';
-    }catch(error){$('diagnosticsMessage').textContent=error.message;}
-    finally{diagnosing=false;controls();}
-  };
+  function openLinkedLog(){
+    if(location.hash==='#logPanel'){$('logPanel').open=true;paintLogs();}
+  }
+  window.addEventListener('hashchange',openLinkedLog);openLinkedLog();
+  window.addEventListener('beforeunload',event=>{
+    if(savedTasks!==null&&selectionKey(plan().tasklist)!==selectionKey(savedTasks)){
+      event.preventDefault();event.returnValue='';
+    }
+  });
   $('logPanel').addEventListener('toggle',paintLogs);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden){refresh(true);refreshProvider();paintLogs();}});
   async function poll(){await refresh();setTimeout(poll,document.hidden?15000:3000);}

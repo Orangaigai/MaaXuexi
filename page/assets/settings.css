@@ -54,3 +54,12 @@
   .setting-switch { gap: 16px; }
   .settings-save { gap: 10px; }
 }
+
+.settings-content .execution-choices { margin-top: 18px; }
+.settings-content .execution-choices legend { font-size: 13px; }
+.support-diagnostics { margin-top: 18px; border-top: 1px solid var(--soft-line); padding-top: 14px; }
+.support-diagnostics summary { color: #465c77; font-size: 13px; font-weight: 550; cursor: pointer; min-height: 30px; }
+.support-diagnostics p { margin-top: 8px; }
+.support-links { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 15px; }
+.support-settings .diagnostics-results { margin-bottom: 0; }
+.settings-page .execution-card { scroll-margin-top: 24px; }

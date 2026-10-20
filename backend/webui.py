@@ -178,21 +178,25 @@ def homepage():
     html = Path('page/index.html').read_text('utf-8')
     html = html.replace('</body>', '<script defer src="/assets/local-provider.js"></script></body>')
     html = html.replace('/assets/local-provider.js', '/assets/local-provider.js?v=' + VERSION)
-    html = html.replace('</body>', '<script defer src="/assets/local-schedule.js?v=' + VERSION + '"></script></body>')
+    html = html.replace('</body>', '<script defer src="/assets/schedule-view.js?v=' + VERSION + '"></script></body>')
+    html = html.replace('</body>', '<script defer src="/assets/schedule-summary.js?v=' + VERSION + '"></script></body>')
     html = html.replace('</body>', '<script defer src="/assets/points-history.js?v=' + VERSION + '"></script></body>')
     html = html.replace('</body>', '<script defer src="/assets/history-import.js?v=' + VERSION + '"></script></body>')
     return HTMLResponse(html, headers={'Cache-Control':'no-store'})
 
 @app.get('/local/api-key')
-def api_key_page():
+def api_key_page(source: str | None = None):
     html=Path('backend/api-key.html').read_text('utf-8')
+    if source == 'settings':
+        html=html.replace('href="/">← 返回控制台', 'href="/local/settings#serviceHeading">← 返回设置')
+        html=html.replace('href="/" class="muted">暂不配置，返回控制台', 'href="/local/settings#serviceHeading" class="muted">暂不配置，返回设置')
     html=html.replace('/assets/key-setup.js','/assets/key-setup.js?v='+VERSION)
     return HTMLResponse(html,headers={'Cache-Control':'no-store'})
 
 @app.get('/local/settings')
 def preferences_page():
     html = Path('page/settings.html').read_text('utf-8')
-    for name in ('local-settings.js', 'history-import.js', 'settings.css', 'ui-base.css', 'console.css'):
+    for name in ('local-settings.js', 'history-import.js', 'schedule-view.js', 'local-schedule.js', 'settings.css', 'ui-base.css', 'console.css'):
         html = html.replace('/assets/'+name, '/assets/'+name+'?v='+VERSION)
     return HTMLResponse(html, headers={'Cache-Control':'no-store'})
 

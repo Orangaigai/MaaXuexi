@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>MaaXuexi · 任务控制台</title>
-  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261020.5">
-  <link rel="stylesheet" href="/assets/console.css?v=local-20261020.5">
+  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261020.6">
+  <link rel="stylesheet" href="/assets/console.css?v=local-20261020.6">
 </head>
 <body>
 <main>
   <header class="page-header">
-    <div class="brand"><span class="brand-mark" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M5 7h14M5 12h8M5 17h6m3-1 2 2 4-5"/></svg></span><div><h1>MaaXuexi <span>任务控制台</span></h1><p>选择任务，安排时间，随时查看学习进度。</p></div></div>
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M5 7h14M5 12h8M5 17h6m3-1 2 2 4-5"/></svg></span><div><h1>MaaXuexi <span>任务控制台</span></h1><p>执行任务，查看进度与每日积分。</p></div></div>
     <div class="header-actions"><nav aria-label="页面导航"><a href="#taskHeading">任务设置</a><a href="#pointsHeading">积分记录</a><a href="/local/settings" class="settings-link"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 3-.6 2.2-2 .9-2-.6-2 3.4 1.5 1.7v2.3L2.4 15l2 3.4 2-.6 2 .9L9 21h4l.6-2.3 2-.9 2 .6 2-3.4-1.5-2.1v-2.3l1.5-1.7-2-3.4-2 .6-2-.9L13 3Z"/><circle cx="11" cy="12" r="3"/></svg>设置</a></nav><span id="connection" class="badge connection-badge">连接中…</span></div>
   </header>
   <div class="overview">
@@ -21,19 +21,21 @@
       <div class="bar runtime-actions"><button id="pause" hidden>暂停</button><button id="resume" class="primary" hidden>继续执行</button><button id="stop" class="danger" hidden>中止任务</button><select id="device" hidden aria-label="选择模拟器"></select><button id="connect" hidden>连接模拟器</button></div>
       <p id="runMessage" class="feedback" role="status" aria-live="polite"></p>
       <div id="completionBanner" class="completion-banner" hidden><span id="completionMessage" role="status"></span><button id="keepOpen" class="compact">本次保持打开</button></div>
-      <div class="runtime-meta"><span id="runMeta" class="muted"></span><span id="version" class="version muted"></span></div>
+      <div class="runtime-meta"><span id="runMeta" class="muted"></span></div>
+      <aside id="providerNotice" class="setup-notice" aria-label="答题服务提示" hidden><div><strong id="provider">答题服务待配置</strong><p id="providerHint"></p></div><a id="providerSetup" class="button compact" href="/local/settings#serviceHeading">配置答题服务</a></aside>
     </section>
-    <section class="card provider-card" aria-labelledby="providerHeading">
-      <div class="section-heading provider-title"><h2 id="providerHeading"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="8" cy="9" r="4"/><path d="m11 12 8 8m-4-4 2-2m0 4 2-2"/></svg>DeepSeek 答题服务</h2><span id="provider" class="badge">读取中</span></div>
-      <p id="providerHint" class="muted">自动答题需要配置 API 密钥，也可先使用基础任务。</p>
-      <div class="provider-actions"><a id="providerSetup" class="button compact" href="/local/api-key">配置密钥</a><a class="help-link" href="/local/api-key?guide=1">不会配置？</a></div>
+    <section class="card schedule-summary" aria-labelledby="planSummaryHeading">
+      <div class="section-heading"><h2 id="planSummaryHeading">执行安排</h2><a class="help-link" href="/local/settings#executionHeading">修改设置 →</a></div>
+      <p id="schedule" class="schedule-summary-plan">正在读取计划…</p>
+      <div class="schedule-next"><span id="scheduleNextLabel" class="muted">距离下次执行</span><strong id="scheduleCountdown" role="timer" aria-live="off">正在读取…</strong><span id="scheduleNextTime" class="muted"></span></div>
+      <p id="executionMessage" class="feedback" role="status"></p>
     </section>
   </div>
   <div class="control-layout">
   <section class="card task-card" aria-labelledby="taskHeading">
-    <div class="section-heading"><h2 id="taskHeading" tabindex="-1"><span class="step-number" aria-hidden="true">1</span>任务清单</h2><div class="section-meta"><span id="taskSelectionCount"></span><span id="taskEditState" class="schedule-edit">读取中</span><button id="taskReset" class="text-button" hidden disabled aria-label="还原为已保存的任务清单">还原</button></div></div>
+    <div class="section-heading"><h2 id="taskHeading" tabindex="-1">任务清单</h2><div class="section-meta"><span id="taskSelectionCount"></span><span id="taskEditState" class="schedule-edit">读取中</span><button id="taskReset" class="text-button" hidden disabled aria-label="还原为已保存的任务清单">还原</button></div></div>
     <p class="section-description">选择本次任务；保存后，下次会沿用这份清单。</p>
-    <div id="choices" class="task-grid" role="group" aria-labelledby="taskHeading">
+    <div id="choices" class="task-grid console-task-grid" role="group" aria-labelledby="taskHeading">
       <section class="task-group" aria-labelledby="basicTaskHeading">
         <div class="task-group-heading"><h3 id="basicTaskHeading">基础任务</h3><span>优先执行</span></div>
         <div id="basicChoices" class="task-items"></div>
@@ -46,38 +48,9 @@
     <div class="task-actions"><button id="save" class="accent" disabled>保存所选任务</button><button id="saveBase" class="quiet" disabled title="保存登录、选读文章、视听学习、本地频道四项">保存基础任务</button><button id="start" class="primary start-button" disabled>立即执行</button></div>
     <p id="actionMessage" class="feedback" role="status" aria-live="polite"></p>
     <aside class="verification-note" aria-label="人工验证提示"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-9v.1"/></svg><p>遇到访问验证，请在模拟器内本人完成，程序会接着执行；中断后可点“继续执行”补做。</p></aside>
-    <div class="completion-setting"><label for="autoClose"><input id="autoClose" type="checkbox" role="switch" disabled><span><strong>完成后自动关闭</strong><small>保存积分后关闭控制台、模拟器和后台；未完成时保留现场。</small></span></label><span id="completionSettingMessage" class="muted" role="status"></span></div>
+
   </section>
-  <section class="card execution-card" aria-label="执行方式设置">
-    <fieldset class="execution-choices">
-      <legend><span class="step-number" aria-hidden="true">2</span>执行方式 <span class="legend-hint">切换后立即生效</span></legend>
-      <label class="execution-option"><input type="radio" name="executionMode" value="manual" disabled aria-controls="manualPanel"><span class="execution-copy"><strong>手动执行</strong></span></label>
-      <label class="execution-option"><input type="radio" name="executionMode" value="automatic" disabled aria-controls="schedulePanel"><span class="execution-copy"><strong>定时自动执行</strong></span></label>
-    </fieldset>
-    <div id="manualPanel" class="manual-panel" hidden><p>定时启动已关闭。点击上方“立即执行”运行所选任务。</p></div>
-    <div id="schedulePanel" class="schedule-divider" role="region" aria-labelledby="scheduleHeading" hidden>
-      <div class="section-heading"><div class="bar"><h3 id="scheduleHeading">定时设置</h3><span class="timezone">北京时间</span></div><div class="section-meta"><span id="scheduleEditState" class="schedule-edit">读取中</span><button id="scheduleReset" class="text-button" hidden disabled aria-label="还原为已保存的定时设置">还原</button></div></div>
-      <p id="schedule" class="section-description">正在读取定时计划…</p>
-      <fieldset class="schedule-options"><legend class="sr-only">选择每日启动时间</legend>
-        <div class="schedule-option">
-          <label class="schedule-mode"><input type="radio" name="scheduleMode" value="fixed" aria-describedby="fixedHint"><span>时间点</span></label>
-          <div class="schedule-fields"><div><label for="fixedTime">每天的启动时间</label><input id="fixedTime" type="time" step="60" value="09:00" required disabled></div></div>
-          <p id="fixedHint" class="schedule-hint">每天在指定时间启动一次。</p>
-        </div>
-        <div class="schedule-option">
-          <label class="schedule-mode"><input type="radio" name="scheduleMode" value="random_window" checked aria-describedby="windowHint"><span>时间段<em class="recommend">推荐</em></span></label>
-          <div class="schedule-fields"><div><label for="windowStart">开始时间</label><input id="windowStart" type="time" step="60" value="08:00" required></div><span class="schedule-to" aria-hidden="true">至</span><div><label for="windowEnd">结束时间</label><input id="windowEnd" type="time" step="60" value="09:00" required></div></div>
-          <p id="windowHint" class="schedule-hint">每天在时间段内随机启动一次。</p>
-        </div>
-      </fieldset>
-      <div class="schedule-footer">
-        <div class="schedule-save"><button id="scheduleSave" class="accent" disabled>保存定时</button><p id="scheduleMessage" class="feedback" role="status" aria-live="polite"></p></div>
-        <div class="schedule-next"><span id="scheduleNextLabel" class="muted">距离下次执行</span><strong id="scheduleCountdown" role="timer" aria-live="off">正在读取…</strong><span id="scheduleNextTime" class="muted"></span></div>
-      </div>
-      <p class="muted schedule-requirements" id="scheduleCatchup">电脑需要开机、登录 Windows、未休眠且联网；关闭网页不停止任务。</p>
-    </div>
-    <p id="executionMessage" class="feedback" role="status" aria-live="polite"></p>
-  </section>
+
   </div>
   <section class="card points-card" aria-labelledby="pointsHeading">
     <div class="section-heading points-title"><div><h2 id="pointsHeading" tabindex="-1">每日积分</h2><p class="muted">点选日期，查看得分与任务结果。</p></div><div class="points-summary"><span class="points-today">今日 <strong id="todayPoints">—</strong></span><span>本月累计 <strong id="monthPoints">—</strong></span></div></div>
@@ -104,9 +77,9 @@
       </aside>
     </div>
   </section>
-  <div class="utility-grid">
+  <div class="utility-grid console-tools">
   <details class="card utility-card" id="logPanel"><summary>运行日志</summary><div class="log-controls"><button id="clearLog" class="compact">清空显示</button></div><pre id="logs" aria-label="运行日志">正在连接日志…</pre></details>
-  <details class="card utility-card" id="diagnosticsPanel"><summary>运行环境自检</summary><p class="muted">检查本机配置，不启动学习，不产生 API 费用。</p><div class="log-controls"><button id="diagnose" class="compact">检查运行环境</button></div><p id="diagnosticsMessage" class="muted" role="status"></p><ul id="diagnosticsResults" class="diagnostics-results"></ul></details>
+
   </div>
   <footer class="page-footer">MaaXuexi · 本机运行，积分记录保存在当前电脑</footer>
 </main>

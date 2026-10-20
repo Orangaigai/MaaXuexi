@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="/assets/settings.css">
   <script defer src="/assets/local-settings.js"></script>
   <script defer src="/assets/history-import.js"></script>
+  <script defer src="/assets/schedule-view.js"></script>
+  <script defer src="/assets/local-schedule.js"></script>
 </head>
 <body>
 <main class="settings-page">
@@ -17,8 +19,40 @@
     <span id="settingsConnection" class="badge">连接中…</span>
   </header>
   <div class="settings-layout">
-    <nav class="settings-nav" aria-label="设置分类"><a href="#displayHeading">窗口显示</a><a href="#notificationHeading">消息通知</a><a href="#finishHeading">运行收尾</a><a href="#recordsHeading">积分记录</a><a href="#serviceHeading">答题服务</a></nav>
+    <nav class="settings-nav" aria-label="设置分类"><a href="#executionHeading">执行与定时</a><a href="#displayHeading">窗口与通知</a><a href="#finishHeading">运行收尾</a><a href="#recordsHeading">积分记录</a><a href="#serviceHeading">答题服务</a><a href="#supportHeading">帮助与排查</a></nav>
     <div class="settings-content">
+      <section class="card execution-card" aria-labelledby="executionHeading">
+        <div class="section-heading"><h2 id="executionHeading">执行与定时</h2><span id="runMode" class="badge">读取执行方式…</span></div>
+        <p class="section-description">定时沿用控制台已保存的任务清单；手动执行仍可随时发起。</p>
+    <fieldset class="execution-choices">
+      <legend>执行方式 <span class="legend-hint">切换后立即生效</span></legend>
+      <label class="execution-option"><input type="radio" name="executionMode" value="manual" disabled aria-controls="manualPanel"><span class="execution-copy"><strong>手动执行</strong></span></label>
+      <label class="execution-option"><input type="radio" name="executionMode" value="automatic" disabled aria-controls="schedulePanel"><span class="execution-copy"><strong>定时自动执行</strong></span></label>
+    </fieldset>
+    <div id="manualPanel" class="manual-panel" hidden><p>定时启动已关闭。返回控制台点击“立即执行”运行所选任务。</p></div>
+    <div id="schedulePanel" class="schedule-divider" role="region" aria-labelledby="scheduleHeading" hidden>
+      <div class="section-heading"><div class="bar"><h3 id="scheduleHeading">定时设置</h3><span class="timezone">北京时间</span></div><div class="section-meta"><span id="scheduleEditState" class="schedule-edit">读取中</span><button id="scheduleReset" class="text-button" hidden disabled aria-label="还原为已保存的定时设置">还原</button></div></div>
+      <p id="schedule" class="section-description">正在读取定时计划…</p>
+      <fieldset class="schedule-options"><legend class="sr-only">选择每日启动时间</legend>
+        <div class="schedule-option">
+          <label class="schedule-mode"><input type="radio" name="scheduleMode" value="fixed" aria-describedby="fixedHint"><span>时间点</span></label>
+          <div class="schedule-fields"><div><label for="fixedTime">每天的启动时间</label><input id="fixedTime" type="time" step="60" value="09:00" required disabled></div></div>
+          <p id="fixedHint" class="schedule-hint">每天在指定时间启动一次。</p>
+        </div>
+        <div class="schedule-option">
+          <label class="schedule-mode"><input type="radio" name="scheduleMode" value="random_window" checked aria-describedby="windowHint"><span>时间段<em class="recommend">推荐</em></span></label>
+          <div class="schedule-fields"><div><label for="windowStart">开始时间</label><input id="windowStart" type="time" step="60" value="08:00" required></div><span class="schedule-to" aria-hidden="true">至</span><div><label for="windowEnd">结束时间</label><input id="windowEnd" type="time" step="60" value="09:00" required></div></div>
+          <p id="windowHint" class="schedule-hint">每天在时间段内随机启动一次。</p>
+        </div>
+      </fieldset>
+      <div class="schedule-footer">
+        <div class="schedule-save"><button id="scheduleSave" class="accent" disabled>保存定时</button><p id="scheduleMessage" class="feedback" role="status" aria-live="polite"></p></div>
+        <div class="schedule-next"><span id="scheduleNextLabel" class="muted">距离下次执行</span><strong id="scheduleCountdown" role="timer" aria-live="off">正在读取…</strong><span id="scheduleNextTime" class="muted"></span></div>
+      </div>
+      <p class="muted schedule-requirements" id="scheduleCatchup">电脑需要开机、登录 Windows、未休眠且联网；关闭网页不停止任务。</p>
+    </div>
+    <p id="executionMessage" class="feedback" role="status" aria-live="polite"></p>
+  </section>
       <form id="preferencesForm" class="card preferences-card">
         <section aria-labelledby="displayHeading">
           <div class="settings-section-title"><div><h2 id="displayHeading">窗口显示</h2><p>设置任务执行时，模拟器窗口如何显示。</p></div><button id="showEmulator" type="button" class="compact">显示模拟器</button></div>
@@ -60,8 +94,13 @@
         </dialog>
       </section>
       <section class="card" aria-labelledby="serviceHeading">
-        <div class="settings-section-title"><div><h2 id="serviceHeading">DeepSeek 答题服务</h2><p id="settingsProvider">正在读取配置状态…</p></div><a class="button compact" href="/local/api-key">管理密钥</a></div>
-        <p class="settings-note">沿用现有的官方接口与本机密钥保存方式。</p>
+        <div class="settings-section-title"><div><h2 id="serviceHeading">DeepSeek 答题服务</h2><p id="settingsProvider">正在读取配置状态…</p></div><a id="settingsProviderSetup" class="button compact" href="/local/api-key?source=settings">管理密钥</a></div>
+        <p class="settings-note">自动答题和观点草稿使用官方 API，基础任务无需配置。密钥仅在本机加密保存。</p><a class="help-link" href="/local/api-key?guide=1&amp;source=settings">查看充值与密钥配置教程 →</a>
+      </section>
+      <section class="card support-settings" aria-labelledby="supportHeading">
+        <div class="settings-section-title"><div><h2 id="supportHeading">帮助与排查</h2><p>任务异常时，先检查环境；执行经过保留在控制台日志。</p></div><span id="settingsVersion" class="badge">读取版本…</span></div>
+  <details class="support-diagnostics" id="diagnosticsPanel"><summary>运行环境自检</summary><p class="muted">检查本机配置，不启动学习，不产生 API 费用。</p><div class="log-controls"><button id="diagnose" class="compact">检查运行环境</button></div><p id="diagnosticsMessage" class="muted" role="status"></p><ul id="diagnosticsResults" class="diagnostics-results"></ul></details>
+        <div class="support-links"><a class="help-link" href="/#logPanel">查看运行日志 →</a><a class="help-link" href="https://github.com/Orangaigai/MaaXuexi/blob/main/docs/troubleshooting.md" target="_blank" rel="noopener noreferrer">常见问题与使用说明 ↗</a></div>
       </section>
     </div>
   </div>

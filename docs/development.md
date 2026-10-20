@@ -16,7 +16,7 @@ py -3.12 -m venv .venv
 
 - `page/assets/ui-base.css` 维护共享的颜色、字体、按钮和控件；`console.css` 维护控制台布局，`key-setup.css` 维护密钥页和指引。样式随源码本地加载，不依赖在线字体或界面框架。
 - `local-settings.js` 负责窗口、通知和设置页状态，`settings.css` 维护设置页；显示/通知偏好与任务、计划和密钥配置分开保存。
-- `local-provider.js` 负责状态和任务操作，`local-schedule.js` 负责执行方式和时间，`points-history.js` 负责日历与收尾选项。更改布局应保留控件ID、语义和键盘操作。
+- `local-provider.js` 负责状态和任务操作，`local-schedule.js` 负责设置页执行方式和时间编辑，`schedule-summary.js` 只读展示首页计划，两者复用 `schedule-view.js`；`points-history.js` 负责日历与本次收尾倒计时。更改布局应保留控件ID、语义和键盘操作。
 - `backend` 模块见[模块说明](architecture.md)。不要把已经分开的导航、识别、模型和核分重新塞进一个页面脚本。
 - `config/*.example.json` 是可发布示例；真实JSON、DPAPI、数据库和运行记录一律保留在本机。
 - `tests/fixtures` 只使用固定、最小化、可公开的测试样本。新截图需检查账号、头像、手机号、评论人信息和密钥是否需要去除。

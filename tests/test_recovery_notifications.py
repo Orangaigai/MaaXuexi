@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 import task_support
+import local_preferences
 from test_optimization import worker
 
 
@@ -18,6 +19,8 @@ class RecoveryNotificationTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         path_patch = patch.object(task_support, 'REPORT_PATH', Path(temporary.name) / 'run.json')
         path_patch.start(); self.addCleanup(path_patch.stop)
+        preference_patch=patch.object(local_preferences,'PREFERENCES_PATH',Path(temporary.name)/'preferences.json')
+        preference_patch.start();self.addCleanup(preference_patch.stop)
         notify_patch = patch('utils.plyer.notification.notify')
         self.notify = notify_patch.start(); self.addCleanup(notify_patch.stop)
         trace_patch = patch('utils.traceback.print_exc')
