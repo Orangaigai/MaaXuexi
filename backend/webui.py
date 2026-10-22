@@ -455,7 +455,7 @@ def execute_tasks(tasks, daily_acceptance=False, verification_first=False, repla
         worker.last_task_error = None
         if replan:
             try:
-                plan = rearm_for_run()
+                plan = rearm_for_run(migrate_legacy=True)
                 if plan and plan['enabled']:
                     worker.send_log('今日已手动启动，今日定时不再重复；已安排下次自动执行。')
             except (OSError, ValueError, subprocess.SubprocessError):

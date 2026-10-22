@@ -198,7 +198,7 @@ def save_schedule(options):
         return dict(_apply_plan(options,next_at),trigger_immediately=immediate)
 
 
-def rearm_for_run():
+def rearm_for_run(*, migrate_legacy=False):
     """Rearm before learning, so tomorrow stays scheduled if learning fails."""
     with _schedule_lock():
         options=_load_options()
@@ -206,7 +206,10 @@ def rearm_for_run():
         if not native['enabled']:
             return schedule_display(native,options)
         if options is None:
-            return None
+            if not migrate_legacy:
+                return None
+            current=schedule_display(native)
+            options=ScheduleOptions(**{name:current[name] for name in ScheduleOptions.model_fields})
         next_at,_=plan_next(options,tomorrow=True)
         return _apply_plan(options,next_at)
 

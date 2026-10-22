@@ -122,6 +122,16 @@ class PersistenceTests(unittest.TestCase):
             self.assertIsNone(schedules.rearm_for_run())
         native.assert_called_once_with()
 
+    def test_manual_legacy_migration_preserves_the_native_clock_and_moves_to_tomorrow(self):
+        with (patch('schedule_support.now_china',return_value=clock('07:00:00')),
+              patch('schedule_support._native',return_value=self.native()),
+              patch('schedule_support._apply_plan',return_value={}) as apply):
+            schedules.rearm_for_run(migrate_legacy=True)
+        options,next_at=apply.call_args.args
+        self.assertEqual(options.mode,'fixed')
+        self.assertEqual(options.time,'08:20')
+        self.assertEqual(next_at.isoformat(),'2026-10-19T08:20:00+08:00')
+
     def test_countdown_comes_from_actual_native_time_not_browser_clock_or_window_start(self):
         result=schedule_display(self.native(),ScheduleOptions(),clock('07:32:00'))
         self.assertEqual(result['seconds_until_next_run'],48*60)
