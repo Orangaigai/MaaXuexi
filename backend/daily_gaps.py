@@ -7,8 +7,8 @@ from daily_hints import clean
 def count_choice_gaps(records, image, options):
     """Count thin underline groups inside the stem, never underscore characters.
 
-    A line reaching a text margin may continue on the next row. Such layouts
-    keep the hint path instead of counting two fragments as separate blanks.
+    Margin blanks need adjacent text-row evidence. A pair of end/start fragments
+    on consecutive rows keeps the hint path rather than becoming two blanks.
     """
     if (not isinstance(image,np.ndarray) or image.shape!=(1280,720,3) or not options):
         return None
@@ -39,18 +39,35 @@ def count_choice_gaps(records, image, options):
         for left,right in zip(np.flatnonzero(edges==1),np.flatnonzero(edges==-1)):
             if 32<=right-left<=250:
                 x=int(left)+55;right=int(right)+55;absolute_y=int(y)+top
-                previous=next((line for line in reversed(lines) if line[0]==x and line[2]==right
+                previous=next((line for line in reversed(lines) if abs(line[0]-x)<=2 and abs(line[2]-right)<=2
                                and line[3]==absolute_y-1),None)
-                if previous:previous[3]=absolute_y
+                if previous:
+                    previous[0]=min(previous[0],x);previous[2]=max(previous[2],right)
+                    previous[3]=absolute_y
                 else:lines.append([x,absolute_y,right,absolute_y])
     if not 2<=len(lines)<=6:return None
+    if any(right>635 and other_left<90 and 25<=other_y-y<=70
+           for _,y,right,_ in lines for other_left,other_y,_,_ in lines):
+        return None
     for left,y,right,last_y in lines:
-        if last_y-y>2 or left<90 or right>635:return None
-        # Text on both sides supports an interior gap. Margin fragments and
-        # decorative rules cannot establish a complete logical blank.
+        if last_y-y>2:return None
         band=image[max(top,y-36):last_y+3,:,:3].min(axis=2)<100
-        if (np.count_nonzero(band[:,max(55,left-70):left])<4
-                or np.count_nonzero(band[:,right:min(665,right+70)])<4):return None
+        left_text=np.count_nonzero(band[:,max(55,left-70):left])>=4
+        right_text=np.count_nonzero(band[:,right:min(665,right+70)])>=4
+        if left<90:
+            # A new row can start with a whole blank after a full line of text.
+            preceding=[r for r in rows if 30<=y-r['box'][1]-r['box'][3]<=70]
+            if left>80 or not preceding or not right_text:return None
+            end_y=max(r['box'][1]+r['box'][3] for r in preceding)
+            if not any(r['box'][0]+r['box'][2]>=620 and
+                       abs(r['box'][1]+r['box'][3]-end_y)<=8 for r in preceding):return None
+        elif not left_text:return None
+        if right>635:
+            following=[r for r in rows if last_y+4<r['box'][1]<last_y+55]
+            if right<650 or not following or not left_text:return None
+            first_y=min(r['box'][1] for r in following)
+            if not any(r['box'][0]<=90 and abs(r['box'][1]-first_y)<=8 for r in following):return None
+        elif not right_text:return None
     return len(lines)
 
 

@@ -10,7 +10,7 @@ from unittest.mock import Mock
 import httpx
 import numpy as np
 from answer_client import AIResolver
-from daily_text import choice_page, complete_hint, request_text
+from daily_text import choice_inventory, choice_page, complete_hint, request_text
 from test_optimization import worker, job
 
 
@@ -37,10 +37,30 @@ class DailyTextTests(unittest.TestCase):
         self.assertEqual(value['options'],{'A':'5+3','B':'5-3'})
         self.assertEqual(request_text(value,complete_hint(HINT,self.image))['hint'],'五加三等于八。')
 
+    def test_complete_ocr_inventory_avoids_all_six_template_scans(self):
+        value=worker();value._sleep=Mock()
+        value._get_options=Mock(side_effect=AssertionError('template fallback on complete OCR'))
+        value._screen_records=Mock(return_value=page());value._screen_ocr_cache=(self.image,page())
+        value._get_red_texts=Mock(return_value=['5+3'])
+        value.tasker.controller.post_screencap.return_value.wait.return_value.get.return_value=self.image
+        _,options,_,_=value._prepare('单选题')
+        self.assertEqual({key:row[0] for key,row in options.items()},{'A':'5+3','B':'5-3'})
+        value._get_options.assert_not_called()
+
+    def test_inventory_still_requires_the_final_footer_and_every_label(self):
+        for missing in ['出题：平台','查看提示','B. 5-3']:
+            records=[r for r in page() if r['text']!=missing]
+            self.assertIsNone(choice_inventory(records,self.image,OPTIONS,'单选题'))
+
     def test_full_frame_restores_multiline_option_instead_of_crop_text(self):
         records=page();records.insert(4,row('后一行仍属于选项A',125,580,420))
         value=choice_page(records,self.image,OPTIONS,'单选题')
         self.assertEqual(value['options']['A'],'5+3\n后一行仍属于选项A')
+
+    def test_source_column_one_pixel_higher_does_not_force_template_fallback(self):
+        records=page()+[row('（出版社）',500,399,140)]
+        value=choice_inventory(records,self.image,OPTIONS,'单选题')
+        self.assertEqual(value['question'],'下列哪一个算式结果是八？')
 
     def test_partial_or_scrolled_stems_missing_labels_and_footers_use_images(self):
         for missing in ['单选题','A. 5+3','出题：平台','查看提示']:

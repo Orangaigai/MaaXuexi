@@ -16,11 +16,11 @@ def _bounded(rows, bottom):
                              and r['box'][1]+r['box'][3] < bottom for r in rows)
 
 
-def choice_page(records, image, options, question_type):
+def _choice_layout(records, image, options, question_type):
     """A visible heading, every label, footer and hint link bound a single page.
 
-    Scrolled/partial pages keep the existing full-image path. Option content is
-    rebuilt from full-frame OCR, not the old one-line option recognition crop.
+    This establishes the option inventory, including on illustrated pages.
+    It does not authorize omitting images from a model request.
     """
     if (question_type not in ('单选题', '多选题') or not isinstance(image, np.ndarray)
             or image.shape != (1280, 720, 3) or not 2 <= len(options) <= 6):
@@ -43,7 +43,9 @@ def choice_page(records, image, options, question_type):
     start = headings[0]['box'][1]+headings[0]['box'][3]
     sources = [r['box'][1] for r in records if start < r['box'][1] < labels[0]['box'][1]
                and re.match(r'^(来源|出题|推荐单位)[：:]', r['text'].strip())]
-    stem_end = min(sources) if sources else labels[0]['box'][1]-10
+    # OCR can place a second source-column fragment a few pixels above its label.
+    # Keep that same-baseline metadata out of the question, as question_from_records does.
+    stem_end = min(sources)-10 if sources else labels[0]['box'][1]-10
     stem = _rows(records, start+10, stem_end)
     if not _bounded(stem, stem_end) or len(clean(''.join(r['text'] for r in stem))) < 5:
         return None
@@ -65,10 +67,25 @@ def choice_page(records, image, options, question_type):
         rebuilt[letter] = text
         boxes.append(dict(box=[label['box'][0], label['box'][1],
                                650-label['box'][0], bottom-label['box'][1]]))
-    visual, _ = visual_evidence(image, records, boxes, question, strict=True)
+    return dict(question_type=question_type, question=question, options=rebuilt), boxes
+
+
+def choice_inventory(records, image, options, question_type):
+    """Prove that all option labels and their content fit on this page."""
+    layout = _choice_layout(records, image, options, question_type)
+    return layout[0] if layout is not None else None
+
+
+def choice_page(records, image, options, question_type):
+    """Only a complete, non-visual page may become a text-only model request."""
+    layout = _choice_layout(records, image, options, question_type)
+    if layout is None:
+        return None
+    page, boxes = layout
+    visual, _ = visual_evidence(image, records, boxes, page['question'], strict=True)
     if visual:
         return None
-    return dict(question_type=question_type, question=question, options=rebuilt)
+    return page
 
 
 def complete_hint(records, image):

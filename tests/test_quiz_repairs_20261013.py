@@ -23,7 +23,7 @@ class QuizRepairTests(unittest.TestCase):
         field=job()
         field.get.return_value.nodes[0].recognition=SimpleNamespace(
             all_results=actual['blank_boxes'],filtered_results=actual['filtered_boxes'] if filtered else [])
-        value.tasker.post_task=Mock(side_effect=lambda name:field if name=='文本框' else job())
+        value.tasker.post_task=Mock(side_effect=lambda name,pipeline_override=None:field if name=='文本框' else job())
         return value
 
     def test_photo_false_matches_do_not_inflate_two_real_blank_cells_to_seventeen(self):

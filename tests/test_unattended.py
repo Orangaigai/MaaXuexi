@@ -31,7 +31,7 @@ class UnattendedTests(unittest.TestCase):
     def test_api_normalizes_order_even_if_daily_is_requested_first(self):
         selected = ['每日答题', '趣味答题', '发表观点', '订阅', '本地频道', '视听学习', '选读文章', '登录', '每日答题']
         self.assertEqual(webui.TaskModel(tasklist=selected).tasklist,
-                         ['登录','选读文章','视听学习','本地频道','每日答题','趣味答题','订阅','发表观点'])
+                         ['登录','选读文章','视听学习','本地频道','每日答题','订阅','发表观点','趣味答题'])
 
     def test_expired_unattended_wait_raises_without_android_input(self):
         value = self.guarded_worker()
@@ -54,11 +54,11 @@ class UnattendedTests(unittest.TestCase):
         value.read_article = Mock()
         value.funny_answer = Mock(side_effect=lambda: value.pause('平台访问验证'))
         value.daily_answer = Mock()
-        value.subscribe = Mock()
+        value.subscribe = Mock(return_value=dict(value=2,maximum=2))
         with patch('utils.plyer.notification.notify'):
             value.task(['每日答题', '趣味答题', '选读文章','订阅'], unattended=True)
         report = value.run_report.snapshot()
-        self.assertEqual(list(report['tasks']), ['选读文章', '每日答题', '趣味答题','订阅'])
+        self.assertEqual(list(report['tasks']), ['选读文章', '每日答题', '订阅','趣味答题'])
         self.assertEqual(report['status'], 'needs_human')
         self.assertTrue(report['requires_human'])
         self.assertTrue(report['unattended'])
@@ -67,10 +67,10 @@ class UnattendedTests(unittest.TestCase):
         self.assertEqual(report['tasks']['选读文章']['after']['value'], 12)
         self.assertEqual(report['tasks']['趣味答题']['state'], 'needs_human')
         self.assertEqual(report['tasks']['每日答题']['state'], 'verified')
-        self.assertEqual(report['tasks']['订阅']['state'], 'deferred')
+        self.assertEqual(report['tasks']['订阅']['state'], 'verified')
         self.assertFalse(value.pause_flag)
         value.daily_answer.assert_called_once()
-        value.subscribe.assert_not_called()
+        value.subscribe.assert_called_once()
         self.assertEqual(value.read_learning_score.call_count, 3)
 
     def test_verification_at_start_does_not_start_any_learning_task(self):

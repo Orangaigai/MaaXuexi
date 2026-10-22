@@ -28,7 +28,7 @@ from local_preferences import desktop_notification
 from window_policy import WindowPolicy
 from fun_challenge import FunChallenge
 from daily_hints import question_from_records, exact_hint_choice, exact_hint_parts
-from daily_text import choice_page, complete_hint, request_text
+from daily_text import choice_inventory, choice_page, complete_hint, request_text
 from daily_gaps import all_options_from_gaps, count_choice_gaps
 from daily_choices import scan_to_hint, select_scrolled_choices, visible_options
 from screen_reading import read_screen
@@ -1403,23 +1403,34 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         self._blank_context=None
         self._blank_hint_text=''
         if question_type in ("单选题", "多选题"):
-            options = self._get_options()
             records = self._screen_records()
-            options.update(visible_options(records))
-            self._choice_question_text = question_from_records(records,options)
             frame = getattr(self,'_screen_ocr_cache',None)
+            options = visible_options(records)
+            inventory = (choice_inventory(records,frame[0],options,question_type)
+                         if isinstance(frame,tuple) and len(frame)==2 else None)
+            if inventory is None:
+                # Partial/image-only labels keep the existing template fallback.
+                found = self._get_options()
+                found.update(options)
+                options = found
+                if isinstance(frame,tuple) and len(frame)==2:
+                    inventory = choice_inventory(records,frame[0],options,question_type)
+            else:
+                options = {letter:(text,options[letter][1])
+                           for letter,text in inventory['options'].items()}
+            self._choice_question_text = question_from_records(records,options)
             if isinstance(frame,tuple) and len(frame)==2:
                 gap_count=count_choice_gaps(records,frame[0],options) if question_type=='多选题' else None
                 self._daily_choice_page = choice_page(records,frame[0],options,question_type)
                 if self._daily_choice_page:
                     options={letter:(text,options[letter][1])
                              for letter,text in self._daily_choice_page['options'].items()}
-                    direct=(all_options_from_gaps(self._daily_choice_page,records,frame[0],options)
-                            if getattr(self,'_daily_gap_shortcut_enabled',True) else None)
-                    if direct:
-                        self._daily_direct_choices=direct
-                        self.send_log(f'每日多选：确认{len(direct)}个完整空格、{len(direct)}个选项，直接全选')
-                        return [frame[0].copy()],options,[],0
+                direct=(all_options_from_gaps(inventory,records,frame[0],options,gap_count=gap_count)
+                        if getattr(self,'_daily_gap_shortcut_enabled',True) else None)
+                if direct:
+                    self._daily_direct_choices=direct
+                    self.send_log(f'每日多选：确认{len(direct)}个完整空格、{len(direct)}个选项，直接全选')
+                    return [frame[0].copy()],options,[],0
         if question_type == "填空题":
             result: TaskDetail = self.tasker.post_task("文本框").wait().get()
             blank_num = (
@@ -1459,10 +1470,14 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 ).wait()
                 self._sleep(0.5)
                 img_list.append(self.tasker.controller.post_screencap().wait().get())
-        hint_open = self.tasker.post_task("查看提示").wait().get()
+        hint_open = self.tasker.post_task("查看提示", {
+            "查看提示": {"next":["本机提示就绪"]},
+            "本机提示就绪": {"recognition":"TemplateMatch","template":"关闭提示.png",
+                "roi":[635,429,52,54],"threshold":.9,"action":"DoNothing",
+                "timeout":2500,"rate_limit":100,"pre_delay":0,"post_delay":0}
+        }).wait().get()
         if hint_open.status.failed:
             raise TaskIncomplete("Quiz hint was not opened")
-        self._sleep(0.5)
         img_list.append(self.tasker.controller.post_screencap().wait().get())
         red_texts = []
         if self.fast_answer or question_type in ('填空题','点选填空题','单选题','多选题'):

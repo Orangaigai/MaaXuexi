@@ -1,13 +1,16 @@
 """Whole-stem gap geometry, wrapped ambiguity and evidence-bound hint skipping."""
 import sys
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import Mock
 import numpy as np
+from PIL import Image
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'backend'))
 from daily_gaps import count_choice_gaps, all_options_from_gaps
 from test_optimization import worker
 from daily_text import choice_page
+from daily_choices import visible_options
 
 
 def sample(instruction='每个选项仅用一次，依次填入空白处。'):
@@ -25,6 +28,20 @@ def sample(instruction='每个选项仅用一次，依次填入空白处。'):
 
 
 class GapTests(unittest.TestCase):
+    def test_real_interior_and_whole_line_start_blanks_with_multiline_options(self):
+        for name in ('three-interior','three-line-start'):
+            folder=Path(__file__).parent/'fixtures/daily-gaps-20261022'
+            records=json.loads((folder/f'{name}.json').read_text('utf-8'))
+            image=np.asarray(Image.open(folder/f'{name}.png').convert('RGB'))[:,:,::-1]
+            value=worker();value._get_options=Mock(side_effect=AssertionError('unneeded template scan'))
+            value._screen_records=Mock(return_value=records);value._screen_ocr_cache=(image,records)
+            images,choices,reds,_=value._prepare('多选题')
+            self.assertEqual(count_choice_gaps(records,image,choices),3)
+            self.assertEqual(value._determine_answer('多选题',choices,reds,images),(list('ABC'),True))
+            value.tasker.post_task.assert_not_called()
+            value._get_options.assert_not_called()
+            if name=='three-interior':self.assertIn('平大体一致',choices['C'][0])
+
     def test_count_groups_not_number_of_underscore_characters(self):
         records,image,options=sample()
         self.assertEqual(count_choice_gaps(records,image,options),2)
@@ -52,6 +69,19 @@ class GapTests(unittest.TestCase):
         image[350:352,610:665]=180
         image[396:398,65:120]=180
         self.assertIsNone(count_choice_gaps(records,image,options))
+
+    def test_antialiased_ends_do_not_double_count_one_thin_line(self):
+        records,image,options=sample()
+        image[351,200:202]=255
+        image[351,252:254]=255
+        self.assertEqual(count_choice_gaps(records,image,options),2)
+
+    def test_unanchored_line_start_is_not_accepted_as_a_whole_blank(self):
+        folder=Path(__file__).parent/'fixtures/daily-gaps-20261022'
+        records=json.loads((folder/'three-line-start.json').read_text('utf-8'))
+        image=np.asarray(Image.open(folder/'three-line-start.png').convert('RGB'))[:,:,::-1]
+        records=[r for r in records if not r['text'].startswith('非法传销是指')]
+        self.assertIsNone(count_choice_gaps(records,image,visible_options(records)))
 
     def test_dividers_thick_lines_and_absent_text_do_not_count_as_blanks(self):
         for modification in ('thick','divider','no_anchors'):
@@ -81,6 +111,7 @@ class GapTests(unittest.TestCase):
         value.tasker.controller.post_screencap.assert_not_called()
         value._screen_records.assert_called_once()
         value._get_red_texts.assert_not_called();value.ai_resolver.resolve_choice.assert_not_called()
+        value._get_options.assert_not_called()
 
     def test_real_blue_grey_lines_above_reference_picture_count_four(self):
         records,image,options=sample('通过四个信息栏了解就业岗位。')
@@ -113,6 +144,7 @@ class GapTests(unittest.TestCase):
     def test_next_preparation_clears_previous_direct_answer(self):
         records,image,options=sample('选择正确答案。')
         options['C']=('丙',[85,730,35,40])
+        records.append(dict(text='C. 丙',box=[85,730,200,30]))
         value=worker();value._get_options=Mock(return_value=options)
         value._screen_records=Mock(return_value=records);value._screen_ocr_cache=(image,records)
         value._daily_direct_choices=['A','B'];value._sleep=Mock();value._get_red_texts=Mock(return_value=['甲'])
@@ -120,3 +152,16 @@ class GapTests(unittest.TestCase):
         value._prepare('多选题')
         self.assertIsNone(value._daily_direct_choices)
         self.assertEqual([call.args[0] for call in value.tasker.post_task.call_args_list],['查找提示','查看提示','关闭提示'])
+
+    def test_complete_illustrated_inventory_can_skip_hint_without_becoming_text_only(self):
+        records,image,options=sample()
+        # A reference illustration is not evidence that an extra option exists.
+        image[390:415,300:370]=0
+        value=worker();value._get_options=Mock(side_effect=AssertionError('unneeded template scan'))
+        value._screen_records=Mock(return_value=records);value._screen_ocr_cache=(image,records)
+        images,choices,reds,_=value._prepare('多选题')
+        self.assertEqual(value._daily_direct_choices,['A','B'])
+        self.assertIsNone(value._daily_choice_page)
+        self.assertIsNone(value._daily_choice_text)
+        self.assertEqual(value._determine_answer('多选题',choices,reds,images),(['A','B'],True))
+        value.tasker.post_task.assert_not_called()
