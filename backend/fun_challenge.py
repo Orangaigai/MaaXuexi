@@ -499,10 +499,11 @@ class FunChallenge(FourPlayerQuiz):
                     raise TaskIncomplete('趣味答题计数回退，停止本轮并保留实际结果')
                 highest = count
                 self._fun_metrics['confirmed_correct'] = count
-            finishing = highest >= planned
+            finishing = highest >= planned or self._fun_metrics.get('model_failure_finish', False)
             if wrong_or_finished(records):
                 self._fun_metrics.update(early_end=not finishing,
-                    end_reason='planned_finish' if finishing else 'answer_incorrect',
+                    end_reason=('model_unavailable' if self._fun_metrics.get('model_failure_finish')
+                                else 'planned_finish' if finishing else 'answer_incorrect'),
                     scoring_minimum_met=highest>=target)
                 self.send_log(f'趣味答题：应用确认答对{highest}题，本局已结束，准备结算并核实实际积分')
                 self._wait_fun_settlement()
@@ -511,7 +512,7 @@ class FunChallenge(FourPlayerQuiz):
                 return
             if finishing and not self._fun_metrics.get('normal_end_started'):
                 self._fun_metrics['normal_end_started'] = True
-                self.send_log(f'趣味答题：已达到本局{planned}题目标，完成正常收尾作答')
+                self.send_log(f'趣味答题：已答对{highest}题，准备收尾并核实实际积分')
             if not current or pending:
                 idle += 1
                 if idle_started is None:
@@ -520,7 +521,8 @@ class FunChallenge(FourPlayerQuiz):
                     raise TaskIncomplete('趣味答题未确认下一题或答对计数，已停止重复点击')
                 self._sleep(0.12)
                 continue
-            if self._fun_metrics['model_calls'] >= self._fun_metrics['model_call_limit']:
+            fallback = self._fun_metrics.get('model_failure_finish', False)
+            if not fallback and self._fun_metrics['model_calls'] >= self._fun_metrics['model_call_limit']:
                 raise TaskIncomplete('趣味答题达到本局有限模型调用上限')
             if finishing and self._fun_metrics['ending_answers_clicked'] >= 2:
                 raise TaskIncomplete('趣味答题两次收尾作答仍未结束，保留现场，未空等下一题超时')
@@ -528,12 +530,14 @@ class FunChallenge(FourPlayerQuiz):
             visual,visual_area=visual_evidence(image,records,options,question_body(records,options))
             picture_key=visual_identity(image,visual_area) if visual and visual_area is not None else None
             first_observed = getattr(self,'_last_screen_read_started',time.monotonic())
-            self._fun_metrics['model_calls'] += 1
-            self.send_log(f'趣味答题：已确认答对{highest}题，DeepSeek识别下一题')
-            started = time.monotonic()
-            answer = self.ai_resolver.resolve_fun_choice([image], [row['text'] for row in options],
-                question_body(records,options),visual_required=visual)
-            self._fun_metrics['model_seconds'].append(round(time.monotonic()-started,2))
+            answer = None
+            if not fallback:
+                self._fun_metrics['model_calls'] += 1
+                self.send_log(f'趣味答题：已确认答对{highest}题，DeepSeek识别下一题')
+                started = time.monotonic()
+                answer = self.ai_resolver.resolve_fun_choice([image], [row['text'] for row in options],
+                    question_body(records,options),visual_required=visual)
+                self._fun_metrics['model_seconds'].append(round(time.monotonic()-started,2))
             self._check_active()
             fresh = self._fun_records()
             fresh_options = self._fun_options(fresh)
@@ -549,8 +553,18 @@ class FunChallenge(FourPlayerQuiz):
                 self._sleep(.5)
                 continue
             if answer is None:
-                raise TaskIncomplete('趣味答题答案无法确定：'+str(self.ai_resolver.last_error))
-            selected_index = (answer+1) % len(fresh_options) if finishing and fresh_options else answer
+                if highest < target:
+                    raise TaskIncomplete('趣味答题答案无法确定：'+str(self.ai_resolver.last_error))
+                # The minimum is confirmed, but a timeout must not leave the
+                # round hanging. At most two ordinary choices; either may be
+                # correct. Only the app's result and score can confirm success.
+                self._fun_metrics['model_failure_finish'] = True
+                finishing = True
+                selected_index = self._fun_metrics['ending_answers_clicked'] % len(fresh_options)
+                if not fallback:
+                    self.send_log('趣味答题：模型暂不可用，已达计分线，尝试有限收尾，不再请求模型')
+            else:
+                selected_index = (answer+1) % len(fresh_options) if finishing and fresh_options else answer
             selected = next((row for index,row in enumerate(fresh_options) if index == selected_index), None)
             if selected is None:
                 raise TaskIncomplete('趣味答题模型答案不在当前选项中')

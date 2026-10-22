@@ -1,12 +1,11 @@
 """Local daily score observations; reruns replace snapshots, never add them."""
-from contextlib import contextmanager
 from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 import json
 import re
-import sqlite3
 from history_ledger import LedgerStore
 
+from sqlite_store import store_connection
 from task_support import ALIASES
 
 BEIJING = timezone(timedelta(hours=8))
@@ -30,46 +29,39 @@ class PointsHistory(LedgerStore):
     def __init__(self, path=None):
         self.path = Path(path) if path is not None else HISTORY_PATH
 
-    @contextmanager
     def connect(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        db = sqlite3.connect(self.path, timeout=5)
-        db.row_factory = sqlite3.Row
-        try:
-            with db:
-                db.executescript('''
-                    CREATE TABLE IF NOT EXISTS scores (
-                        day TEXT NOT NULL, task TEXT NOT NULL, value INTEGER NOT NULL,
-                        maximum INTEGER NOT NULL, observed_at TEXT NOT NULL,
-                        PRIMARY KEY(day,task)
-                    );
-                    CREATE TABLE IF NOT EXISTS runs (
-                        run_id TEXT PRIMARY KEY, day TEXT NOT NULL, status TEXT NOT NULL,
-                        started_at TEXT NOT NULL, finished_at TEXT, selected TEXT NOT NULL
-                    );
-                    CREATE INDEX IF NOT EXISTS runs_day ON runs(day,started_at);
-                    CREATE TABLE IF NOT EXISTS daily_totals (
-                        day TEXT PRIMARY KEY, points INTEGER NOT NULL,
-                        observed_at TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS task_results (
-                        day TEXT NOT NULL, task TEXT NOT NULL, state TEXT NOT NULL,
-                        reason TEXT NOT NULL, mode TEXT NOT NULL, observed_at TEXT NOT NULL,
-                        PRIMARY KEY(day,task)
-                    );
-                    CREATE TABLE IF NOT EXISTS ledger_days (
-                        day TEXT PRIMARY KEY,points INTEGER NOT NULL,entries INTEGER NOT NULL,
-                        observed_at TEXT NOT NULL,source TEXT NOT NULL
-                    );
-                    CREATE TABLE IF NOT EXISTS score_transactions (
-                        day TEXT NOT NULL,position INTEGER NOT NULL,time TEXT NOT NULL,
-                        name TEXT NOT NULL,points INTEGER NOT NULL,only_total INTEGER NOT NULL,
-                        observed_at TEXT NOT NULL,PRIMARY KEY(day,position)
-                    );
-                ''')
-                yield db
-        finally:
-            db.close()
+        return store_connection(self.path, self._initialize)
+
+    @staticmethod
+    def _initialize(db):
+        db.execute('''CREATE TABLE IF NOT EXISTS scores (
+            day TEXT NOT NULL, task TEXT NOT NULL, value INTEGER NOT NULL,
+            maximum INTEGER NOT NULL, observed_at TEXT NOT NULL,
+            PRIMARY KEY(day,task)
+        )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS runs (
+            run_id TEXT PRIMARY KEY, day TEXT NOT NULL, status TEXT NOT NULL,
+            started_at TEXT NOT NULL, finished_at TEXT, selected TEXT NOT NULL
+        )''')
+        db.execute('''CREATE INDEX IF NOT EXISTS runs_day ON runs(day,started_at)''')
+        db.execute('''CREATE TABLE IF NOT EXISTS daily_totals (
+            day TEXT PRIMARY KEY, points INTEGER NOT NULL,
+            observed_at TEXT NOT NULL
+        )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS task_results (
+            day TEXT NOT NULL, task TEXT NOT NULL, state TEXT NOT NULL,
+            reason TEXT NOT NULL, mode TEXT NOT NULL, observed_at TEXT NOT NULL,
+            PRIMARY KEY(day,task)
+        )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS ledger_days (
+            day TEXT PRIMARY KEY,points INTEGER NOT NULL,entries INTEGER NOT NULL,
+            observed_at TEXT NOT NULL,source TEXT NOT NULL
+        )''')
+        db.execute('''CREATE TABLE IF NOT EXISTS score_transactions (
+            day TEXT NOT NULL,position INTEGER NOT NULL,time TEXT NOT NULL,
+            name TEXT NOT NULL,points INTEGER NOT NULL,only_total INTEGER NOT NULL,
+            observed_at TEXT NOT NULL,PRIMARY KEY(day,position)
+        )''')
 
     @staticmethod
     def _observe(db, scores, observed):

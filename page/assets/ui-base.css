@@ -25,6 +25,7 @@ h3 { font-size: 14px; font-weight: 600; }
 p { color: var(--muted); }
 a { color: var(--blue); text-underline-offset: 3px; }
 .muted { font-size: 12px; color: var(--muted); }
+.schedule-warning { margin-top: 12px; padding-left: 10px; border-left: 2px solid #d69e43; color: var(--amber); font-size: 12px; }
 .icon { width: 18px; height: 18px; flex: 0 0 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .card { min-width: 0; border: 1px solid #e6ebf2; border-radius: var(--radius); background: var(--surface); box-shadow: 0 3px 12px #263f6503; }
 button, .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 8px 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: #3c4d66; font: inherit; font-weight: 500; line-height: 1.5; text-decoration: none; cursor: pointer; transition: background .15s, border-color .15s, box-shadow .15s; }

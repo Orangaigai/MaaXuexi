@@ -143,6 +143,34 @@ class PersistenceTests(unittest.TestCase):
             result=schedules.read_schedule()
         self.assertFalse(result['available']);self.assertNotIn('seconds_until_next_run',result)
 
+    def test_failed_rearm_keeps_a_warning_even_when_a_later_read_succeeds(self):
+        with patch.object(schedules,'_native',side_effect=subprocess.TimeoutExpired('powershell',20)):
+            with self.assertRaises(subprocess.TimeoutExpired):
+                schedules.rearm_for_run(migrate_legacy=True)
+            failed=schedules.read_schedule()
+        self.assertIn('重新保存定时',failed['warning'])
+        with patch.object(schedules,'_native',return_value=self.native()):
+            current=schedules.read_schedule()
+        self.assertTrue(current['available'])
+        self.assertEqual(current['warning'],failed['warning'])
+        self.assertNotIn('powershell',current['warning'])
+
+    def test_successfully_saving_the_native_plan_clears_the_warning(self):
+        schedules._record_rearm_warning()
+        with patch.object(schedules,'now_china',return_value=clock('07:00:00')), \
+             patch.object(schedules.secrets,'randbelow',return_value=1200), \
+             patch.object(schedules,'_native',return_value=self.native()):
+            result=schedules.save_schedule(ScheduleOptions())
+        self.assertEqual(result['warning'],'')
+        self.assertFalse(schedules._warning_path().exists())
+
+    def test_confirmed_manual_mode_clears_warning_without_creating_a_new_trigger(self):
+        schedules._record_rearm_warning()
+        with patch.object(schedules,'_native',return_value=dict(self.native(),enabled=False)) as native:
+            result=schedules.set_execution_mode('manual')
+        self.assertEqual(result['warning'],'')
+        native.assert_called_once_with()
+
 
 class ScheduleApiTests(unittest.TestCase):
     def test_immediate_button_uses_saved_daily_tasks_and_does_not_edit_schedule(self):

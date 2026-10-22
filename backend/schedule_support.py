@@ -81,6 +81,33 @@ def _daily_state_path():
     return CONFIG_PATH.with_name('daily-run-state.json')
 
 
+def _warning_path():
+    return CONFIG_PATH.with_name('schedule-warning.json')
+
+
+def schedule_warning():
+    try:
+        value = json.loads(_warning_path().read_text('utf-8'))
+        if isinstance(value, dict) and isinstance(value.get('message'), str):
+            return value['message']
+    except (OSError, ValueError):
+        pass
+    return ''
+
+
+def _clear_warning():
+    _warning_path().unlink(missing_ok=True)
+
+
+def _record_rearm_warning():
+    path = _warning_path()
+    temporary = path.with_suffix('.tmp')
+    temporary.write_text(json.dumps(dict(
+        message='下次自动执行时间更新失败，请在设置中重新保存定时；本轮任务仍会继续。',
+        recorded_at=now_china().isoformat(timespec='seconds')), ensure_ascii=False), 'utf-8')
+    temporary.replace(path)
+
+
 def daily_started_today(now=None):
     """A started attempt consumes automation for its Beijing day, not manual retries."""
     path = _daily_state_path()
@@ -161,6 +188,7 @@ def schedule_display(value, options=None, now=None):
         next_at=next_at.replace(tzinfo=CHINA) if next_at.tzinfo is None else next_at.astimezone(CHINA)
     return dict(value,**fields,execution_mode='automatic' if value['enabled'] else 'manual',
         today_started=daily_started_today(now),
+        warning=schedule_warning(),
         timezone='Asia/Shanghai',requires_windows_login=True,
         server_now=now.isoformat(timespec='seconds'),next_run_at=next_at.isoformat(timespec='seconds') if next_at else None,
         seconds_until_next_run=max(0,math.ceil((next_at-now).total_seconds())) if next_at else None,
@@ -173,6 +201,7 @@ def read_schedule():
             return schedule_display(_native(),_load_options())
     except (OSError,subprocess.SubprocessError,ValueError,KeyError,TypeError):
         return dict(available=False,enabled=None,timezone='Asia/Shanghai',
+            warning=schedule_warning(),
             defaults=ScheduleOptions().model_dump(),message='定时状态暂未读到，请稍后刷新；未将旧配置当作当前计划。')
 
 
@@ -187,6 +216,7 @@ def _apply_plan(options, next_at):
         if applied!=next_at or native['random_delay_seconds']!=0 or not native['enabled']:
             raise ValueError('Windows 未确认新的定时时刻')
         temporary.replace(CONFIG_PATH)
+        _clear_warning()
     finally:
         temporary.unlink(missing_ok=True)
     return schedule_display(native,options)
@@ -201,17 +231,25 @@ def save_schedule(options):
 def rearm_for_run(*, migrate_legacy=False):
     """Rearm before learning, so tomorrow stays scheduled if learning fails."""
     with _schedule_lock():
-        options=_load_options()
-        native=_native()
-        if not native['enabled']:
-            return schedule_display(native,options)
-        if options is None:
-            if not migrate_legacy:
-                return None
-            current=schedule_display(native)
-            options=ScheduleOptions(**{name:current[name] for name in ScheduleOptions.model_fields})
-        next_at,_=plan_next(options,tomorrow=True)
-        return _apply_plan(options,next_at)
+        try:
+            options=_load_options()
+            native=_native()
+            if not native['enabled']:
+                _clear_warning()
+                return schedule_display(native,options)
+            if options is None:
+                if not migrate_legacy:
+                    return None
+                current=schedule_display(native)
+                options=ScheduleOptions(**{name:current[name] for name in ScheduleOptions.model_fields})
+            next_at,_=plan_next(options,tomorrow=True)
+            return _apply_plan(options,next_at)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            try:
+                _record_rearm_warning()
+            except OSError:
+                pass  # The caller still reports the original scheduling failure.
+            raise
 
 
 def set_execution_mode(mode):
@@ -226,6 +264,7 @@ def set_execution_mode(mode):
                 native=_native('-Disable')
             if native['enabled']:
                 raise ValueError('Windows 未确认关闭定时启动')
+            _clear_warning()
             return schedule_display(native,options)
         if native['enabled']:
             return schedule_display(native,options)

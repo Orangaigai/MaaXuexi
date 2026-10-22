@@ -63,6 +63,54 @@ class FunChallengeTests(unittest.TestCase):
         value.tasker.controller.post_click.assert_not_called()
         self.assertEqual(value._fun_metrics['stale_answers_discarded'],3)
 
+    def test_model_failure_before_minimum_does_not_guess_or_claim_credit(self):
+        value = self.make_worker()
+        value.ai_resolver.resolve_fun_choice.return_value = None
+        value._fun_records = Mock(side_effect=[page(2), page(2)])
+        with self.assertRaisesRegex(TaskIncomplete, '答案无法确定'):
+            value.funny_answer()
+        value.tasker.controller.post_click.assert_not_called()
+        value._exit_fun_challenge.assert_not_called()
+
+    def test_model_failure_after_minimum_can_finish_without_another_model_call(self):
+        self.length.side_effect = None; self.length.return_value = 15
+        value = self.make_worker()
+        value.ai_resolver.resolve_fun_choice.return_value = None
+        value._fun_records = Mock(side_effect=[page(10), page(10),
+            [dict(text='挑战结束', box=[200,600,300,60]), dict(text='本次答对10题', box=[200,730,260,40])]])
+        value.funny_answer()
+        self.assertTrue(value._fun_metrics['model_failure_finish'])
+        self.assertTrue(value._fun_metrics['scoring_minimum_met'])
+        self.assertEqual(value._fun_metrics['end_reason'], 'model_unavailable')
+        self.assertEqual(value._fun_metrics['ending_answers_clicked'], 1)
+        value.ai_resolver.resolve_fun_choice.assert_called_once()
+        value._wait_fun_settlement.assert_called_once()
+        value._exit_fun_challenge.assert_called_once()
+
+    def test_fallback_may_be_correct_but_stops_after_two_choices(self):
+        self.length.side_effect = None; self.length.return_value = 15
+        value = self.make_worker()
+        value.ai_resolver.resolve_fun_choice.return_value = None
+        frames = []
+        for count in (10,11):
+            frames.extend([page(count, f'题目{count}'), page(count, f'题目{count}')])
+        frames.append(page(12, '题目12'))
+        value._fun_records = Mock(side_effect=frames)
+        with self.assertRaisesRegex(TaskIncomplete, '两次收尾'):
+            value.funny_answer()
+        self.assertEqual(value.tasker.controller.post_click.call_count, 2)
+        self.assertEqual(value._fun_metrics['confirmed_correct'], 12)
+        value.ai_resolver.resolve_fun_choice.assert_called_once()
+        value._exit_fun_challenge.assert_not_called()
+
+    def test_model_failure_still_discards_a_changed_question_before_fallback(self):
+        value = self.make_worker()
+        value.ai_resolver.resolve_fun_choice.return_value = None
+        value._fun_records = Mock(side_effect=[page(10, '旧题'), page(10, '新题')]*3)
+        with self.assertRaisesRegex(TaskIncomplete, '过期'):
+            value.funny_answer()
+        value.tasker.controller.post_click.assert_not_called()
+
     def test_real_ocr_jitter_discards_old_answer_and_requeries_without_reusing_it(self):
         fixture=Path(__file__).parent/'fixtures/quiz-20261013/fun-ocr-jitter.json'
         evidence=json.loads(fixture.read_text('utf-8'))

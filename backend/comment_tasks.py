@@ -1,12 +1,11 @@
 """Contextual comments: one unattended attempt; owner-started retries are journaled."""
 import json
 import re
-import sqlite3
 import time
 import uuid
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from sqlite_store import store_connection
 
 from daily_flow import verification_visible
 from four_player import race_network_error
@@ -39,28 +38,23 @@ class CommentJournal:
     def __init__(self, path=None):
         self.path = Path(path) if path is not None else JOURNAL_PATH
 
-    @contextmanager
-    def _connect(self):
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        db = sqlite3.connect(self.path, timeout=5)
-        db.row_factory = sqlite3.Row
-        try:
-            with db:
-                db.execute('CREATE TABLE IF NOT EXISTS comments '
-                           '(day TEXT PRIMARY KEY, article TEXT NOT NULL, text TEXT NOT NULL, '
-                           'state TEXT NOT NULL, created_at TEXT NOT NULL)')
-                db.execute('CREATE TABLE IF NOT EXISTS comment_attempts '
-                           '(attempt_id TEXT PRIMARY KEY, day TEXT NOT NULL, article TEXT NOT NULL, '
-                           'text TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL)')
-                db.execute('CREATE INDEX IF NOT EXISTS comment_attempts_day ON comment_attempts(day)')
-                # Keep the original table and every original row. Backfill once
-                # per day; all later attempts are append-only separate records.
-                db.execute('INSERT OR IGNORE INTO comment_attempts '
-                           "SELECT 'legacy:'||day, day, article, text, state, created_at FROM comments "
-                           'WHERE NOT EXISTS (SELECT 1 FROM comment_attempts a WHERE a.day=comments.day)')
-                yield db
-        finally:
-            db.close()
+    def _connect(self, *, write=False):
+        return store_connection(self.path, self._initialize, write=write)
+
+    @staticmethod
+    def _initialize(db):
+        db.execute('CREATE TABLE IF NOT EXISTS comments '
+                   '(day TEXT PRIMARY KEY, article TEXT NOT NULL, text TEXT NOT NULL, '
+                   'state TEXT NOT NULL, created_at TEXT NOT NULL)')
+        db.execute('CREATE TABLE IF NOT EXISTS comment_attempts '
+                   '(attempt_id TEXT PRIMARY KEY, day TEXT NOT NULL, article TEXT NOT NULL, '
+                   'text TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL)')
+        db.execute('CREATE INDEX IF NOT EXISTS comment_attempts_day ON comment_attempts(day)')
+        # Keep original rows; backfill legacy days only during migration.
+        # All later attempts remain append-only separate records.
+        db.execute('INSERT OR IGNORE INTO comment_attempts '
+                   "SELECT 'legacy:'||day, day, article, text, state, created_at FROM comments "
+                   'WHERE NOT EXISTS (SELECT 1 FROM comment_attempts a WHERE a.day=comments.day)')
 
     def today(self):
         with self._connect() as db:
@@ -71,7 +65,7 @@ class CommentJournal:
     def reserve(self, article, text, *, owner_retry=False, attempt_id=None):
         if not valid_comment_text(text):
             raise TaskIncomplete('观点内容未满足短评规则，未占用发布额度')
-        with self._connect() as db:
+        with self._connect(write=True) as db:
             day = datetime.now().date().isoformat()
             previous = db.execute('SELECT state FROM comment_attempts WHERE day=?', (day,)).fetchall()
             if previous and (not owner_retry or not attempt_id or any(r['state']=='credited' for r in previous)):
@@ -87,7 +81,7 @@ class CommentJournal:
             return result.rowcount == 1
 
     def credited(self):
-        with self._connect() as db:
+        with self._connect(write=True) as db:
             attempt_id = getattr(self, '_reserved_id', None)
             if attempt_id is None:
                 rows = db.execute('SELECT attempt_id FROM comment_attempts WHERE day=?',

@@ -4,6 +4,8 @@
   window.MaaScheduleView=class {
     constructor(lookup){this.$=lookup;this.plan=null;this.observedAt=0;this.unavailable=false;}
     set(plan){
+      const warning=this.$('scheduleWarning');
+      if(warning){warning.textContent=plan.warning||'';warning.hidden=!plan.warning;}
       if(!plan.available)throw Error(plan.message||'定时状态未能读取。');
       this.plan=plan;this.observedAt=performance.now();this.unavailable=false;
     }

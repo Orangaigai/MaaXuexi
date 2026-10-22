@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "local-20261022.2"
+VERSION = "local-20261022.3"
 REPORT_PATH = Path("config/last-run.json")
 # Basic tasks first; competitive matching last, as requested after recent runs.
 # Any quiz or public action may require verification; this is not a platform rule.
