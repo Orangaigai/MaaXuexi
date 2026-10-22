@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const $=id=>document.getElementById(id);
-  const names=['登录','选读文章','视听学习','本地频道','趣味答题','订阅','发表观点','每日答题'];
+  const names=['登录','选读文章','视听学习','本地频道','每日答题','趣味答题','订阅','发表观点'];
   const verificationTasks=new Set(['趣味答题','订阅','发表观点','每日答题']);
   const aiTasks=new Set(['趣味答题','发表观点','每日答题']);
   const inputs=new Map();

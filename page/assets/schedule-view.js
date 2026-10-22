@@ -15,7 +15,7 @@
       const plan=this.plan;if(!plan||this.unavailable)return;
       this.$('runMode').textContent=plan.enabled?'定时自动执行':'手动执行';
       const timing=plan.mode==='random_window'?`每天 ${plan.window_start}～${plan.window_end} 内随机启动一次`:`每天 ${plan.time} 启动`;
-      this.$('schedule').textContent=plan.enabled?timing:'定时已关闭，可随时手动执行。';
+      this.$('schedule').textContent=plan.enabled?timing+(plan.today_started?'；今日已启动，不再定时重复执行。':''):'定时已关闭，可随时手动执行。';
       const next=plan.enabled&&plan.next_run_at?new Date(plan.next_run_at):null;
       this.$('scheduleNextTime').textContent=next&&Number.isFinite(next.getTime())
         ?'预计 '+new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(next):'';

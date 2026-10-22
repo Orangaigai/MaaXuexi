@@ -17,7 +17,7 @@
     $('preferencesState').textContent=!saved?'正在读取设置…':pending?'正在保存…':dirty?'有未保存的更改':'已保存到本机';
     $('savePreferences').disabled=!saved||pending||!dirty;
     form.querySelectorAll('input').forEach(input=>{input.disabled=!loaded||pending;});
-    $('settingsAutoClose').disabled=!loaded||closing;
+    for(const id of ['settingsCloseEmulator','settingsCloseConsole'])$(id).disabled=!loaded||closing;
     $('showEmulator').disabled=pending;
     $('diagnose').disabled=diagnosing||!health||Boolean(health.task_running||health.history_import?.active);
   }
@@ -43,10 +43,15 @@
     catch(error){message('preferencesMessage',error.message,true);}
     finally{update();}
   };
-  $('settingsAutoClose').onchange=async()=>{
-    const requested=$('settingsAutoClose').checked;closing=true;update();
-    try{await request('/api/local/completion-options',{auto_close:requested});message('finishMessage',requested?'已开启，完成后自动关闭。':'已关闭，任务结束后保留窗口。');}
-    catch(error){$('settingsAutoClose').checked=!requested;message('finishMessage',error.message,true);}
+  const closeFields=()=>({close_emulator:$('settingsCloseEmulator').checked,close_console:$('settingsCloseConsole').checked});
+  function showCloseOptions(value){
+    $('settingsCloseEmulator').checked=value.close_emulator??value.auto_close;
+    $('settingsCloseConsole').checked=value.close_console??value.auto_close;
+  }
+  for(const id of ['settingsCloseEmulator','settingsCloseConsole'])$(id).onchange=async()=>{
+    const previous=!$(id).checked;closing=true;update();
+    try{showCloseOptions(await request('/api/local/completion-options',closeFields()));message('finishMessage','收尾设置已保存。');}
+    catch(error){$(id).checked=previous;message('finishMessage',error.message,true);}
     finally{closing=false;update();}
   };
   window.addEventListener('beforeunload',event=>{if(pending||closing||scheduleEdited||scheduleBusy||saved&&!same(saved,fields())){event.preventDefault();event.returnValue='';}});
@@ -69,7 +74,7 @@
   let stopped=false,timer=null;
   async function refreshCompletion(){
     if(closing)return;
-    try{const result=await request('/api/local/completion-options');if(!closing)$('settingsAutoClose').checked=result.auto_close;}catch{}
+    try{const result=await request('/api/local/completion-options');if(!closing)showCloseOptions(result);}catch{}
   }
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshCompletion();});
   async function poll(){
@@ -88,7 +93,7 @@
     form.querySelector(`[name=windowMode][value="${value.window_mode}"]`).checked=true;
     $('showOnAttention').checked=value.show_on_attention;$('desktopNotifications').checked=value.notifications;
     $('openConsoleOnSchedule').checked=value.open_console_on_schedule;
-    $('settingsAutoClose').checked=value.completion.auto_close;loaded=true;update();
+    showCloseOptions(value.completion);loaded=true;update();
   }).catch(error=>{message('preferencesMessage',error.message,true);$('preferencesState').textContent='读取失败，请刷新重试';});
   request('/api/local/provider').then(value=>{$('settingsProvider').textContent=value.validated?'已配置，最近一次连接验证通过。':value.configured?'已配置密钥，尚待验证连接。':'尚未配置，自动答题前请先添加密钥。';$('settingsProviderSetup').textContent=value.configured?'管理密钥':'配置密钥';}).catch(()=>{$('settingsProvider').textContent='暂时无法读取，请稍后刷新。';});
   poll();

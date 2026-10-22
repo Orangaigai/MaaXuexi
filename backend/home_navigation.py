@@ -197,6 +197,7 @@ class HomeNavigation:
             self.send_log('首页加载失败现场未能写入，请查看模拟器和日志')
 
     def _go_home(self):
+        from daily_flow import daily_scene
         self._check_active()
         self._guard_verification()
         records = self._launch_records()
@@ -208,6 +209,22 @@ class HomeNavigation:
         if foreground and home_ready(records):
             self.send_log('当前已在首页，直接确认，不重开应用')
             return self._wait_home_ready(timeout=30, notification_dismissed=notification_dismissed)
+        if foreground:
+            # These known utility pages have an existing Back path to home.
+            # Never unwind questions, submission results, login or verification.
+            for _ in range(2):
+                if daily_scene(records) not in ('score', 'center', 'profile'):
+                    break
+                result = self.tasker.post_task('返回').wait().get()
+                if result is None or result.status.failed:
+                    break
+                self._sleep(.3)
+                records = self._launch_records()
+                if not self._app_in_foreground():
+                    break
+                if home_ready(records):
+                    self.send_log('已沿当前页面返回首页，不重开应用')
+                    return self._wait_home_ready(timeout=30, notification_dismissed=notification_dismissed)
         # A system dialog or another app may cover an existing detail activity.
         # Starting alone would resume that activity, so reset the app in both cases.
         # Login and access-verification screens were guarded before any mutation.

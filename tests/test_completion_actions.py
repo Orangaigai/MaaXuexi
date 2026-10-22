@@ -40,6 +40,39 @@ class CompletionActionTests(unittest.TestCase):
         actions.save_options(True);self.action.arm(report());self.assertTrue(self.action.cancel())
         self.assertEqual(self.action.snapshot()['state'],'cancelled');self.assertTrue(actions.read_options()['auto_close'])
 
+    def test_legacy_disabled_setting_keeps_both_resources_open(self):
+        self.path.write_text('{"auto_close":false}',encoding='utf-8')
+        self.assertEqual(actions.read_options(),dict(auto_close=False,close_emulator=False,close_console=False))
+
+    def test_separate_options_preserve_the_other_setting(self):
+        actions.save_options(close_emulator=False)
+        self.assertEqual(actions.read_options(),dict(auto_close=True,close_emulator=False,close_console=True))
+        actions.save_options(close_console=False)
+        self.assertFalse(actions.read_options()['auto_close'])
+        self.action.arm(report());self.assertEqual(self.action.snapshot()['state'],'idle')
+
+    def test_console_only_closure_preserves_emulator_and_stops_backend(self):
+        actions.save_options(close_emulator=False,close_console=True)
+        process=Mock();process.poll.return_value=0
+        spawn=self.start_closing(process)
+        arguments=spawn.call_args.args[0]
+        self.assertIn('-KeepEmulator',arguments);self.assertNotIn('-KeepConsole',arguments)
+        shutdown=Mock();self.action.poll(report(),running=False,shutdown=shutdown)
+        shutdown.assert_called_once()
+
+    def test_emulator_only_closure_keeps_control_page_and_backend(self):
+        actions.save_options(close_emulator=True,close_console=False)
+        process=Mock();process.poll.return_value=0
+        spawn=self.start_closing(process)
+        arguments=spawn.call_args.args[0]
+        self.assertIn('-KeepConsole',arguments);self.assertNotIn('-KeepEmulator',arguments)
+        shutdown=Mock();self.action.poll(report(),running=False,shutdown=shutdown)
+        shutdown.assert_not_called();self.assertEqual(self.action.snapshot()['state'],'closed')
+
+    def test_invalid_options_cannot_silently_turn_resources_on_or_off(self):
+        for changes in ({},{'close_emulator':'false'},{'auto_close':True,'close_console':False}):
+            with self.subTest(changes=changes),self.assertRaises(ValueError):actions.save_options(**changes)
+
     def test_countdown_waits_and_new_task_or_changed_run_cancels_it(self):
         for changed,running in ((report('other'),False),(report(),True)):
             self.action.arm(report())

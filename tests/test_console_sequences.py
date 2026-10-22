@@ -27,7 +27,7 @@ class ConsoleSequences(unittest.TestCase):
 
     def test_near_simultaneous_start_requests_create_only_one_job(self):
         state=webui.AppState();state.worker=worker();entered=threading.Event();release=threading.Event()
-        def execute(*args):entered.set();release.wait(2)
+        def execute(*args,**kwargs):entered.set();release.wait(2)
         with patch.object(webui,'app_state',state),patch.object(webui,'ensure_worker',return_value=state.worker), \
              patch.object(webui,'execute_tasks',side_effect=execute):
             try:
@@ -43,7 +43,7 @@ class ConsoleSequences(unittest.TestCase):
         with patch.object(webui,'app_state',state),patch.object(webui,'read_report',return_value=report), \
              patch.object(webui,'start_selected',return_value={'status':'success'}) as start:
             self.assertEqual(webui.resume()['status'],'success')
-            self.assertEqual(start.call_args.args[0].tasklist,['订阅','每日答题'])
+            self.assertEqual(start.call_args.args[0].tasklist,['每日答题','订阅'])
             self.assertFalse(start.call_args.args[0].unattended)
 
     def test_diagnostics_never_starts_a_worker_or_runs_while_task_is_active(self):

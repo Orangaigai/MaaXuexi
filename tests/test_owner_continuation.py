@@ -85,19 +85,19 @@ class OwnerContinuationTests(unittest.TestCase):
         value.pause('真实访问验证', resume_when=lambda: True)
         self.assertFalse(value.pause_flag)
 
-    def test_one_scheduled_run_continues_to_daily_after_owner_finishes_fun_verification(self):
+    def test_one_scheduled_run_continues_to_fun_after_owner_finishes_daily_verification(self):
         value = worker()
         value._finish_existing_quiz = Mock()
         value._summarize_run = Mock()
         before = {'趣味答题': dict(value=0, maximum=10), '每日答题': dict(value=0, maximum=5)}
         value.read_learning_score = Mock(side_effect=[before,
-            {'趣味答题': dict(value=10, maximum=10)}, {'每日答题': dict(value=5, maximum=5)}])
+            {'每日答题': dict(value=5, maximum=5)}, {'趣味答题': dict(value=10, maximum=10)}])
         run_ids = []
         def fun():
             run_ids.append(value.run_report.snapshot()['run_id'])
-            value.pause('趣味答题真实访问验证', resume_when=lambda: self.clock >= 2)
         def daily():
             run_ids.append(value.run_report.snapshot()['run_id'])
+            value.pause('每日答题真实访问验证', resume_when=lambda: self.clock >= 2)
         value.funny_answer = Mock(side_effect=fun)
         value.daily_answer = Mock(side_effect=daily)
         value.task(['趣味答题', '每日答题'], unattended=True)

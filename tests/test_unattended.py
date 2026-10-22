@@ -31,7 +31,7 @@ class UnattendedTests(unittest.TestCase):
     def test_api_normalizes_order_even_if_daily_is_requested_first(self):
         selected = ['每日答题', '趣味答题', '发表观点', '订阅', '本地频道', '视听学习', '选读文章', '登录', '每日答题']
         self.assertEqual(webui.TaskModel(tasklist=selected).tasklist,
-                         ['登录','选读文章','视听学习','本地频道','趣味答题','订阅','发表观点','每日答题'])
+                         ['登录','选读文章','视听学习','本地频道','每日答题','趣味答题','订阅','发表观点'])
 
     def test_expired_unattended_wait_raises_without_android_input(self):
         value = self.guarded_worker()
@@ -48,15 +48,17 @@ class UnattendedTests(unittest.TestCase):
         value._finish_existing_quiz = Mock()
         value._reset_home = Mock()
         scores = {name: dict(value=0, maximum=cap) for name, cap in
-                  [('选读文章', 12), ('趣味答题', 10), ('每日答题', 5)]}
-        value.read_learning_score = Mock(side_effect=[scores, {'选读文章': dict(value=12, maximum=12)}])
+                  [('选读文章', 12), ('趣味答题', 10), ('每日答题', 5),('订阅',2)]}
+        value.read_learning_score = Mock(side_effect=[scores, {'选读文章': dict(value=12, maximum=12)},
+                                                     {'每日答题':dict(value=5,maximum=5)}])
         value.read_article = Mock()
         value.funny_answer = Mock(side_effect=lambda: value.pause('平台访问验证'))
         value.daily_answer = Mock()
+        value.subscribe = Mock()
         with patch('utils.plyer.notification.notify'):
-            value.task(['每日答题', '趣味答题', '选读文章'], unattended=True)
+            value.task(['每日答题', '趣味答题', '选读文章','订阅'], unattended=True)
         report = value.run_report.snapshot()
-        self.assertEqual(list(report['tasks']), ['选读文章', '趣味答题', '每日答题'])
+        self.assertEqual(list(report['tasks']), ['选读文章', '每日答题', '趣味答题','订阅'])
         self.assertEqual(report['status'], 'needs_human')
         self.assertTrue(report['requires_human'])
         self.assertTrue(report['unattended'])
@@ -64,10 +66,12 @@ class UnattendedTests(unittest.TestCase):
         self.assertEqual(report['tasks']['选读文章']['state'], 'verified')
         self.assertEqual(report['tasks']['选读文章']['after']['value'], 12)
         self.assertEqual(report['tasks']['趣味答题']['state'], 'needs_human')
-        self.assertEqual(report['tasks']['每日答题']['state'], 'deferred')
+        self.assertEqual(report['tasks']['每日答题']['state'], 'verified')
+        self.assertEqual(report['tasks']['订阅']['state'], 'deferred')
         self.assertFalse(value.pause_flag)
-        value.daily_answer.assert_not_called()
-        self.assertEqual(value.read_learning_score.call_count, 2)
+        value.daily_answer.assert_called_once()
+        value.subscribe.assert_not_called()
+        self.assertEqual(value.read_learning_score.call_count, 3)
 
     def test_verification_at_start_does_not_start_any_learning_task(self):
         value = worker()

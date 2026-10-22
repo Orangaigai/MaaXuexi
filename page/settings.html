@@ -76,7 +76,10 @@
       </form>
       <section class="card" aria-labelledby="finishHeading">
         <h2 id="finishHeading">运行收尾</h2>
-        <label class="setting-switch"><span><strong>完成后自动关闭</strong><small>全部任务完成并保存积分后，关闭控制台、模拟器和后台；未完成时保留现场。</small></span><input id="settingsAutoClose" type="checkbox" role="switch" disabled></label>
+        <p class="section-description">全部所选任务完成并保存积分后执行；未完成或等待验证时保留现场。</p>
+        <label class="setting-switch"><span><strong>完成后关闭模拟器</strong><small>退出本项目配置的 MuMu 实例，释放模拟器占用。</small></span><input id="settingsCloseEmulator" type="checkbox" role="switch" disabled></label>
+        <label class="setting-switch"><span><strong>完成后关闭网页控制台</strong><small>关闭本项目的独立控制台窗口和后台，积分记录仍会保留。</small></span><input id="settingsCloseConsole" type="checkbox" role="switch" disabled></label>
+        <p class="settings-note">关闭前倒计时 30 秒，可在控制台选择“本次保持打开”。</p>
         <p id="finishMessage" class="feedback" role="status" aria-live="polite"></p>
       </section>
       <section class="card records-settings" aria-labelledby="recordsHeading">

@@ -243,9 +243,9 @@ class FunChallengeTests(unittest.TestCase):
         remaining=[original[1]]
         self.assertEqual(question_text(records,remaining,original[0]['box'][1]),old_question)
 
-    def test_manual_and_saved_plans_keep_daily_quiz_last(self):
+    def test_manual_and_saved_plans_put_daily_before_matchmaking(self):
         plan=webui.TaskModel(tasklist=['每日答题','选读文章','趣味答题','趣味答题'])
-        self.assertEqual(plan.tasklist,['选读文章','趣味答题','每日答题'])
+        self.assertEqual(plan.tasklist,['选读文章','每日答题','趣味答题'])
 
 
 class ChallengeLengthTests(unittest.TestCase):

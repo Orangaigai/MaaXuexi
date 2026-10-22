@@ -25,14 +25,17 @@ from provider_support import MODEL, invalidate_validation, provider_metadata, te
 from utils import MaaWorker
 from task_support import VERSION, read_report, ordered_tasks, ALIASES, TaskIncomplete
 from comment_tasks import comment_policy
-from schedule_support import ScheduleOptions, read_schedule, save_schedule, set_execution_mode
+from schedule_support import (ScheduleOptions, read_schedule, save_schedule, set_execution_mode,
+    daily_started_today, claim_daily_run, release_daily_claim, rearm_for_run)
 from points_history import PointsHistory
 from history_import import HistoryImport
 from completion_actions import CompletionActions, read_options, save_options
 from local_preferences import LocalPreferences, read_preferences, save_preferences
 
 class CompletionOptions(BaseModel):
-    auto_close: StrictBool
+    auto_close: StrictBool | None = None
+    close_emulator: StrictBool | None = None
+    close_console: StrictBool | None = None
     model_config = ConfigDict(extra='forbid')
 
 class HistoryImportOptions(BaseModel):
@@ -336,11 +339,16 @@ def update_completion_options(options: CompletionOptions):
         if app_state.completion.state['state'] == 'closing':
             raise HTTPException(409, '已经开始关闭，请稍后重新打开控制台。')
         try:
-            result = save_options(options.auto_close)
+            result = save_options(options.auto_close, close_emulator=options.close_emulator,
+                                  close_console=options.close_console)
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from error
         except OSError as error:
             raise HTTPException(503, '自动关闭设置未保存，请稍后重试。') from error
-        if not options.auto_close:
+        if not result['auto_close']:
             app_state.completion.cancel()
+        elif app_state.completion.state['state'] == 'pending':
+            app_state.completion.arm(current_report())
         return dict(status='success', **result)
 
 @app.post('/api/local/completion/cancel')
@@ -364,10 +372,16 @@ def update_execution_mode(options: ExecutionMode):
         '已切换为手动执行，定时启动已关闭。正在运行的任务不受影响。' if options.mode=='manual'
         else '已启用定时自动执行；修改时间后请保存。'))
 
-def start_saved_plan(*, unattended=False):
+def start_saved_plan(*, unattended=False, scheduled=False):
     if task_running():
         return dict(status='failed',message='已有任务正在执行，不重复启动。')
-    return start_selected(TaskModel(tasklist=get_task_plan()['tasklist'],unattended=unattended))
+    return start_selected(TaskModel(tasklist=get_task_plan()['tasklist'],unattended=unattended), scheduled=scheduled)
+
+@app.post('/api/local/schedule/start')
+def start_scheduled(tasks: TaskModel):
+    if not tasks.unattended:
+        raise HTTPException(422, '定时启动须使用无人值守模式。')
+    return start_selected(tasks, scheduled=True)
 
 @app.post('/api/local/schedule/run-now')
 def run_schedule_now():
@@ -381,11 +395,11 @@ def update_schedule(options: ScheduleOptions):
         raise HTTPException(503,'定时计划未能保存，请稍后重试或查看后台日志。') from error
     result['status']='success'
     if result['trigger_immediately']:
-        started=start_saved_plan(unattended=True)
+        started=start_saved_plan(unattended=True,scheduled=True)
         result['immediate_status']=started['status']
         result['message']='定时已保存；当前在设置时段内，已立即执行每日任务清单。' if started['status']=='success' else '定时已保存；'+started.get('message','立即执行未启动。')
     else:
-        result['message']='定时计划已保存。'
+        result['message']='定时已保存；今日已启动过，下一次按明天的计划执行。' if result.get('today_started') else '定时计划已保存。'
     return result
 
 @app.post('/api/local/task-plan')
@@ -434,11 +448,18 @@ def connect_device(device: DeviceModel):
             raise HTTPException(503, str(exc)) from exc
         return dict(status='success' if connected else 'failed')
 
-def execute_tasks(tasks, daily_acceptance=False, verification_first=False):
+def execute_tasks(tasks, daily_acceptance=False, verification_first=False, replan=False):
     previous_run = current_report().get('run_id')
     try:
         worker = app_state.worker
         worker.last_task_error = None
+        if replan:
+            try:
+                plan = rearm_for_run()
+                if plan and plan['enabled']:
+                    worker.send_log('今日已手动启动，今日定时不再重复；已安排下次自动执行。')
+            except (OSError, ValueError, subprocess.SubprocessError):
+                worker.send_log('今日定时已标记跳过；下次时间暂未更新，请稍后查看执行安排。')
         if daily_acceptance:
             worker.task(tasks.tasklist, tasks.fast_answer, tasks.debug, unattended=False, daily_acceptance=True)
         elif verification_first:
@@ -479,8 +500,10 @@ def verify_full_flow(tasks: TaskModel):
         raise HTTPException(422, '完整流程验收需要保留全部八项任务')
     return start_selected(tasks,verification_first=True)
 
-def start_selected(tasks: TaskModel, daily_acceptance=False, verification_first=False):
+def start_selected(tasks: TaskModel, daily_acceptance=False, verification_first=False, scheduled=False):
     with app_state.lock:
+        if scheduled and daily_started_today():
+            return dict(status='skipped', message='今日已启动过，跳过本次定时执行；未完成任务可手动继续。')
         if app_state.history_import.running:
             return dict(status='failed', message='正在导入历史积分，请等导入结束后再执行学习任务。')
         worker = ensure_worker()
@@ -504,8 +527,19 @@ def start_selected(tasks: TaskModel, daily_acceptance=False, verification_first=
         worker.last_task_error = None
         app_state.current_tasks = tasks.tasklist
         args = (tasks, True) if daily_acceptance else (tasks,False,True) if verification_first else (tasks,)
-        app_state.child_process = threading.Thread(target=execute_tasks, args=args, daemon=True)
-        app_state.child_process.start()
+        thread = threading.Thread(target=execute_tasks, args=args, daemon=True,
+                                  kwargs={'replan':not (scheduled or daily_acceptance or verification_first)})
+        claim = {} if daily_acceptance or verification_first else claim_daily_run(scheduled=scheduled)
+        if claim is None:
+            return dict(status='skipped', message='今日已启动过，跳过本次定时执行。')
+        app_state.child_process = thread
+        try:
+            thread.start()
+        except Exception:
+            app_state.child_process = None
+            app_state.current_tasks = []
+            release_daily_claim(claim)
+            raise
         return dict(status='success')
 
 @app.post('/api/stop')

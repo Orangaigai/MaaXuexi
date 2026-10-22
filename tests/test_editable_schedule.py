@@ -151,7 +151,7 @@ class ScheduleApiTests(unittest.TestCase):
             with TestClient(webui.app) as client:
                 response=client.post('/api/local/schedule',json=ScheduleOptions().model_dump())
         self.assertEqual(response.status_code,200)
-        start.assert_called_once_with(unattended=True)
+        start.assert_called_once_with(unattended=True,scheduled=True)
 
     def test_outside_window_save_never_starts_learning(self):
         with patch.object(webui,'save_schedule',return_value={'trigger_immediately':False}), \

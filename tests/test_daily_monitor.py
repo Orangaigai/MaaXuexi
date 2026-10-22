@@ -27,7 +27,7 @@ function Start-Sleep { param($Seconds) }
 function Start-Process { param($FilePath) }
 function Invoke-RestMethod {
     param($Uri,$Method,$ContentType,$Body,$TimeoutSec)
-    if($Uri.EndsWith('/api/start')) { $global:submissions++; return @{status='success'} }
+    if($Uri.EndsWith('/api/local/schedule/start')) { $global:submissions++; return @{status='success'} }
     if(!$Uri.EndsWith('/api/status')) { throw 'Unexpected request' }
     return [pscustomobject]@{connected=$true;api_key_configured=$true;task_running=$false;paused=$false;
         last_error='"""+last_error+"""';run_summary=@{status='"""+status+"""'}}
@@ -79,7 +79,7 @@ function Start-Sleep { param($Seconds) }
 function Start-Process { param($FilePath) }
 function Invoke-RestMethod {
     param($Uri,$Method,$ContentType,$Body,$TimeoutSec)
-    if($Uri.EndsWith('/api/start')) { $global:submissions++; return @{status='success'} }
+    if($Uri.EndsWith('/api/local/schedule/start')) { $global:submissions++; return @{status='success'} }
     if(!$Uri.EndsWith('/api/status')) { throw 'Unexpected request' }
     $global:statusCalls++
     return [pscustomobject]@{connected=$true;api_key_configured=$true;
@@ -121,7 +121,7 @@ $global:submissions=0
 function Start-Sleep { param($Seconds,$Milliseconds) }
 function Invoke-RestMethod {
     param($Uri,$Method,$ContentType,$Body,$TimeoutSec)
-    if($Uri.EndsWith('/api/start')) {
+    if($Uri.EndsWith('/api/local/schedule/start')) {
         $global:submissions++
         return [pscustomobject]@{status='success'}
     }

@@ -240,8 +240,8 @@ class RecognitionTests(unittest.TestCase):
         for records in data.values():scores.update(parse_score_rows(records))
         self.assertEqual(scores['订阅']['maximum'],2)
 
-    def test_subscription_before_quizzes(self):
-        self.assertEqual(ordered_tasks(['每日答题','趣味答题','订阅','登录']),['登录','趣味答题','订阅','每日答题'])
+    def test_daily_precedes_subscription_and_matchmaking(self):
+        self.assertEqual(ordered_tasks(['每日答题','趣味答题','订阅','登录']),['登录','每日答题','趣味答题','订阅'])
 
     def test_another_accounts_button_does_not_authorize_cancel(self):
         rows=[dict(text='我的订阅',box=[307,55,103,30]),dict(text='添加',box=[641,53,58,34]),

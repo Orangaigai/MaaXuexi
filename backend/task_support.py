@@ -7,12 +7,12 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "local-20261020.6"
+VERSION = "local-20261022.1"
 REPORT_PATH = Path("config/last-run.json")
-# Login is a prerequisite. Then usual no-challenge tasks, occasional-challenge tasks
-# by daily cap (10/2/1), and daily quiz last (frequent challenge on this emulator).
-# These are observed scheduling groups, not guaranteed platform verification rules.
-ALIASES = {"登录": "登录", "选读文章": "我要选读文章", "视听学习": "我要视听学习", "本地频道": "本地频道", "趣味答题": "趣味答题", "订阅": "订阅", "发表观点": "发表观点", "每日答题": "每日答题"}
+# Login and basic tasks first. Daily quiz now precedes competitive matching,
+# which recently required more owner intervention on this device. Every quiz
+# and public action may still require verification; this is not a platform rule.
+ALIASES = {"登录": "登录", "选读文章": "我要选读文章", "视听学习": "我要视听学习", "本地频道": "本地频道", "每日答题": "每日答题", "趣味答题": "趣味答题", "订阅": "订阅", "发表观点": "发表观点"}
 BOUNDARIES = ("登录", "我要选读文章", "我要视听学习", "每日答题", "趣味答题", "订阅", "强国运动", "专项答题", "每周答题", "发表观点", "本地频道")
 
 

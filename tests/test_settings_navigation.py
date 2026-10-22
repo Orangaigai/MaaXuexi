@@ -28,7 +28,7 @@ class SettingsNavigationTests(unittest.TestCase):
 
     def test_settings_owns_schedule_service_finish_history_and_diagnostics(self):
         page=Page(ROOT/'page/settings.html')
-        for name in ('fixedTime','windowStart','windowEnd','scheduleSave','settingsAutoClose','diagnose','settingsVersion','historyImportDetails','settingsProviderSetup'):
+        for name in ('fixedTime','windowStart','windowEnd','scheduleSave','settingsCloseEmulator','settingsCloseConsole','diagnose','settingsVersion','historyImportDetails','settingsProviderSetup'):
             self.assertIn(name,page.ids)
         for href in page.hrefs:
             if href.startswith('#'):self.assertIn(href[1:],page.ids)

@@ -10,6 +10,7 @@ import secrets
 import subprocess
 import threading
 import time
+import uuid
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, StrictStr, model_validator
@@ -76,6 +77,43 @@ def _load_options():
     return ScheduleOptions(**value['options'])
 
 
+def _daily_state_path():
+    return CONFIG_PATH.with_name('daily-run-state.json')
+
+
+def daily_started_today(now=None):
+    """A started attempt consumes automation for its Beijing day, not manual retries."""
+    path = _daily_state_path()
+    if not path.exists():
+        return False
+    value = json.loads(path.read_text('utf-8-sig'))
+    return value.get('day') == (now or now_china()).astimezone(CHINA).date().isoformat()
+
+
+def claim_daily_run(*, scheduled=False):
+    with _schedule_lock():
+        if daily_started_today():
+            return None if scheduled else {}
+        stamp = now_china().astimezone(CHINA)
+        value = dict(day=stamp.date().isoformat(), started_at=stamp.isoformat(timespec='seconds'),
+                     source='scheduled' if scheduled else 'manual', token=uuid.uuid4().hex)
+        path = _daily_state_path()
+        temporary = path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(value), 'utf-8')
+        temporary.replace(path)
+        return value
+
+
+def release_daily_claim(value):
+    """Roll back only a request whose worker thread could not start."""
+    if not value:
+        return
+    with _schedule_lock():
+        path = _daily_state_path()
+        if path.exists() and json.loads(path.read_text('utf-8-sig')) == value:
+            path.unlink()
+
+
 @contextmanager
 def _schedule_lock():
     # Both the server and hidden daily launcher can replan a task. Windows
@@ -122,6 +160,7 @@ def schedule_display(value, options=None, now=None):
     if next_at is not None:
         next_at=next_at.replace(tzinfo=CHINA) if next_at.tzinfo is None else next_at.astimezone(CHINA)
     return dict(value,**fields,execution_mode='automatic' if value['enabled'] else 'manual',
+        today_started=daily_started_today(now),
         timezone='Asia/Shanghai',requires_windows_login=True,
         server_now=now.isoformat(timespec='seconds'),next_run_at=next_at.isoformat(timespec='seconds') if next_at else None,
         seconds_until_next_run=max(0,math.ceil((next_at-now).total_seconds())) if next_at else None,
@@ -155,7 +194,7 @@ def _apply_plan(options, next_at):
 
 def save_schedule(options):
     with _schedule_lock():
-        next_at,immediate=plan_next(options)
+        next_at,immediate=plan_next(options,tomorrow=daily_started_today())
         return dict(_apply_plan(options,next_at),trigger_immediately=immediate)
 
 
@@ -189,6 +228,6 @@ def set_execution_mode(mode):
             return schedule_display(native,options)
         if options is None:
             options=ScheduleOptions()
-        next_at,_=plan_next(options)
+        next_at,_=plan_next(options,tomorrow=daily_started_today())
         # Enabling schedules a future run; only an explicit Save can run now.
         return _apply_plan(options,next_at)

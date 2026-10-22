@@ -205,7 +205,7 @@ class FourPlayerTests(unittest.TestCase):
         value.daily_answer.assert_called_once()
         notify.assert_not_called()
 
-    def test_daily_verification_after_four_player_skip_still_requires_owner(self):
+    def test_daily_verification_defers_later_four_player_without_entering_it(self):
         value = worker()
         value._finish_existing_quiz = Mock()
         value.funny_answer = Mock(side_effect=TaskSkipped('四人赛按设置跳过'))
@@ -216,9 +216,10 @@ class FourPlayerTests(unittest.TestCase):
             value.task(['趣味答题','每日答题'],unattended=True)
         result = value.run_report.snapshot()
         self.assertEqual(result['status'],'needs_human')
-        self.assertEqual(result['unfinished_tasks'],['每日答题'])
-        self.assertEqual(result['skipped_tasks'],['趣味答题'])
-        self.assertEqual(result['tasks']['趣味答题']['state'],'skipped_mode')
+        self.assertEqual(result['unfinished_tasks'],['每日答题','趣味答题'])
+        self.assertEqual(result['skipped_tasks'],[])
+        self.assertEqual(result['tasks']['趣味答题']['state'],'deferred')
+        value.funny_answer.assert_not_called()
 
     def test_complete_question_and_multiline_options_parse(self):
         records = question()+[row('中华人民共和国首都',100,520)]

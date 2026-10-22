@@ -1,5 +1,6 @@
 param([Parameter(Mandatory=$true)][ValidatePattern('^[a-zA-Z0-9_-]{1,80}$')][string]$RunId,
-      [Parameter(Mandatory=$true)][int]$BackendPid)
+      [Parameter(Mandatory=$true)][int]$BackendPid,
+      [switch]$KeepEmulator, [switch]$KeepConsole)
 $ErrorActionPreference = 'Stop'
 $appRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'Control-Browser.ps1')
@@ -30,6 +31,7 @@ try {
         $health.run_summary.status -ne 'completed' -or $health.completion_action.state -ne 'closing') {
         throw 'The completed session changed. No window or emulator was closed.'
     }
+    if (!$KeepEmulator) {
     $config=Get-Content -LiteralPath (Join-Path $appRoot 'config\emulator.json') -Raw -Encoding UTF8 | ConvertFrom-Json
     $cli=[string]$config.mumu_cli; $index=[string]$config.vm_index
     if (!(Test-ConfiguredMuMuTarget $cli $index)) {
@@ -48,8 +50,9 @@ try {
         }
         if (!$stopped) { throw 'MuMu shutdown was not confirmed. Control page preserved.' }
     }
-    Close-ControlBrowser $appRoot
-    Write-Host 'Daily points saved. Configured MuMu instance and owned control window closed.'
+    }
+    if (!$KeepConsole) { Close-ControlBrowser $appRoot }
+    Write-Host ('Daily points saved. Emulator closed: '+(!$KeepEmulator)+'; console closed: '+(!$KeepConsole)+'.')
     exit 0
 } catch {
     Write-Host $_.Exception.Message

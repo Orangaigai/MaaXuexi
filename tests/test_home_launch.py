@@ -69,6 +69,33 @@ class HomeLaunchTests(unittest.TestCase):
         self.value.tasker.controller.post_stop_app.assert_called_once()
         self.value.tasker.controller.post_start_app.assert_called_once()
 
+    def test_known_profile_returns_home_without_stopping_app(self):
+        profile=[dict(text='我要答题',box=[80,400,140,30]),dict(text='学习积分',box=[80,500,140,30])]
+        self.value._screen_records.side_effect=[profile,self.home,self.home,self.home]
+        self.value._reset_home()
+        self.value.tasker.post_task.assert_called_once_with('返回')
+        self.value.tasker.controller.post_stop_app.assert_not_called()
+        self.value.tasker.controller.post_start_app.assert_not_called()
+
+    def test_known_score_returns_through_profile_with_two_backs(self):
+        profile=[dict(text='我要答题',box=[80,400,140,30]),dict(text='学习积分',box=[80,500,140,30])]
+        score=[dict(text='学习积分',box=[200,60,140,30]),dict(text='积分规则',box=[200,300,140,30])]
+        self.value._screen_records.side_effect=[score,profile,self.home,self.home,self.home]
+        self.value._reset_home()
+        self.assertEqual(self.value.tasker.post_task.call_count,2)
+        self.value.tasker.controller.post_stop_app.assert_not_called()
+
+    def test_new_verification_during_back_path_prevents_further_navigation(self):
+        profile=[dict(text='我要答题',box=[80,400,140,30]),dict(text='学习积分',box=[80,500,140,30])]
+        self.value._screen_records.side_effect=[profile,[dict(text='访问验证',box=[200,100,140,30])]]
+        def guard(records=None):
+            if records and any(row['text']=='访问验证' for row in records):
+                raise task_support.HumanRequired('owner verification')
+        self.value._guard_verification.side_effect=guard
+        with self.assertRaises(task_support.HumanRequired):self.value._reset_home()
+        self.value.tasker.post_task.assert_called_once_with('返回')
+        self.value.tasker.controller.post_stop_app.assert_not_called()
+
     def test_verification_present_before_launch_prevents_restart(self):
         del self.value._guard_verification
         self.value.unattended = True

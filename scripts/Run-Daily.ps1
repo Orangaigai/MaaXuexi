@@ -45,8 +45,10 @@ try {
     try { $runLock = [IO.File]::Open((Join-Path $logRoot 'daily-run.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None) }
     catch [IO.IOException] { Write-RunLog 'Another daily launcher is running; skipped.'; exit 0 }
     try {
-        & (Join-Path $appRoot '.venv\Scripts\python.exe') (Join-Path $PSScriptRoot 'Plan-NextRun.py') *>&1 | ForEach-Object { Write-RunLog ([string]$_) }
+        $planArguments = if ($VerificationFirst) { @('--acceptance') } else { @() }
+        & (Join-Path $appRoot '.venv\Scripts\python.exe') (Join-Path $PSScriptRoot 'Plan-NextRun.py') @planArguments *>&1 | ForEach-Object { Write-RunLog ([string]$_) }
         if ($LASTEXITCODE -eq 4) { Write-RunLog 'Manual mode selected; no automatic task submitted.'; exit 0 }
+        if ($LASTEXITCODE -eq 5) { Write-RunLog 'Already started today; no backend, browser or emulator launched.'; exit 0 }
         if ($LASTEXITCODE -ne 0) { throw 'Next-time update failed.' }
     } catch { Write-RunLog 'Could not update the next automatic time; existing Windows trigger retained. Check the schedule panel.' }
     $health = $null
@@ -78,10 +80,11 @@ try {
     $answerTasks = @('\u6bcf\u65e5\u7b54\u9898','\u8da3\u5473\u7b54\u9898','\u53d1\u8868\u89c2\u70b9') | ForEach-Object { ('"'+$_+'"') | ConvertFrom-Json }
     if (@($taskNames | Where-Object { $_ -in $answerTasks }).Count -and !$health.api_key_configured) { throw 'DeepSeek API key is not configured.' }
     $payload = @{tasklist=$taskNames;fast_answer=$false;debug=$false;unattended=$true} | ConvertTo-Json -Compress
-    $startPath = if ($VerificationFirst) { '/api/local/verify-full-flow' } else { '/api/start' }
+    $startPath = if ($VerificationFirst) { '/api/local/verify-full-flow' } else { '/api/local/schedule/start' }
     if ($VerificationFirst) { Write-RunLog 'Temporary verification-first acceptance; saved daily plan is unchanged.' }
     $submittedAt = [DateTimeOffset]::UtcNow.AddSeconds(-1)
     $result = Invoke-RestMethod ($baseUrl+$startPath) -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -TimeoutSec 10
+    if ($result.status -eq 'skipped') { Write-RunLog 'Already started today; no task submitted.'; exit 0 }
     if ($result.status -ne 'success') { Write-RunLog 'Task start was declined; check the control page.'; exit 1 }
     $submitted = $true
     Write-RunLog ('Submitted '+$taskNames.Count+' selected tasks. API key is not logged.')

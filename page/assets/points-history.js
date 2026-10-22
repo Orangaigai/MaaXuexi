@@ -131,12 +131,13 @@
     finally{$('keepOpen').disabled=false;}
   };
   function completion(){
+    const targets=[lastAction?.close_emulator!==false?'模拟器':'',lastAction?.close_console!==false?'控制台':''].filter(Boolean).join('和');
     const state=lastAction?.state;$('completionBanner').hidden=!['pending','closing','failed','cancelled'].includes(state);
     $('keepOpen').hidden=state!=='pending';
     if(state==='pending'){
       const seconds=Math.max(0,Math.ceil((Date.parse(lastAction.closes_at)-Date.now())/1000));
-      $('completionMessage').textContent=`积分已记录，${seconds}秒后自动关闭。`;
-    }else if(state==='closing')$('completionMessage').textContent='积分已记录，正在关闭控制台和模拟器…';
+      $('completionMessage').textContent=`积分已记录，${seconds}秒后关闭${targets}。`;
+    }else if(state==='closing')$('completionMessage').textContent=`积分已记录，正在关闭${targets}…`;
     else if(state==='failed')$('completionMessage').textContent=lastAction.message;
     else if(state==='cancelled')$('completionMessage').textContent='积分已记录，本次保持打开。';
   }
