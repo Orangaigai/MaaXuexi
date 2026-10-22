@@ -1,5 +1,6 @@
 param([switch]$CheckOnly, [switch]$NoBrowser, [switch]$VerificationFirst)
 $ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
 $appRoot = Split-Path -Parent $PSScriptRoot
 $baseUrl = 'http://127.0.0.1:8000'
 $taskNames = @('\u767b\u5f55', '\u9009\u8bfb\u6587\u7ae0', '\u89c6\u542c\u5b66\u4e60', '\u672c\u5730\u9891\u9053', '\u6bcf\u65e5\u7b54\u9898', '\u8ba2\u9605', '\u8da3\u5473\u7b54\u9898') | ForEach-Object { ('"'+$_+'"') | ConvertFrom-Json }

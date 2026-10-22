@@ -140,14 +140,18 @@ class TaskOrderTests(unittest.TestCase):
         shutil.copy2(Path(__file__).resolve().parents[1]/'scripts/Run-Daily.ps1',script)
         for name in ('scripts/Start-MaaXuexi.ps1','backend/webui.py','config/emulator.json','config/deepseek-key.dpapi'):
             target=self.root/name;target.parent.mkdir(parents=True,exist_ok=True);target.touch()
-        command=['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',str(script),'-CheckOnly']
+        # Match English Windows/CI: Chinese must survive even when the parent
+        # starts with the OEM 437 console encoding.
+        command=['powershell.exe','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',
+                 '[Console]::OutputEncoding=[Text.Encoding]::GetEncoding(437); & $env:MAA_ORDER_SCRIPT -CheckOnly']
+        environment=dict(os.environ,MAA_ORDER_SCRIPT=str(script))
         result=subprocess.run(command,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=20,
-                              creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+                              env=environment,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(json.loads(result.stdout)['tasks'],list(BASIC_TASKS)+CUSTOM)
         data['task_order']=['趣味答题']*4;path.write_text(json.dumps(data),'utf-8');before=path.read_bytes()
         result=subprocess.run(command,capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=20,
-                              creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+                              env=environment,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         self.assertNotEqual(result.returncode,0)
         self.assertIn('Invalid local task order',result.stderr)
         self.assertEqual(path.read_bytes(),before)
