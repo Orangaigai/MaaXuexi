@@ -2,14 +2,18 @@ param([switch]$CheckOnly, [switch]$NoBrowser, [switch]$VerificationFirst)
 $ErrorActionPreference = 'Stop'
 $appRoot = Split-Path -Parent $PSScriptRoot
 $baseUrl = 'http://127.0.0.1:8000'
-$taskNames = @('\u767b\u5f55', '\u9009\u8bfb\u6587\u7ae0', '\u89c6\u542c\u5b66\u4e60', '\u672c\u5730\u9891\u9053', '\u8da3\u5473\u7b54\u9898', '\u8ba2\u9605', '\u6bcf\u65e5\u7b54\u9898') | ForEach-Object { ('"'+$_+'"') | ConvertFrom-Json }
+$taskNames = @('\u767b\u5f55', '\u9009\u8bfb\u6587\u7ae0', '\u89c6\u542c\u5b66\u4e60', '\u672c\u5730\u9891\u9053', '\u6bcf\u65e5\u7b54\u9898', '\u8ba2\u9605', '\u8da3\u5473\u7b54\u9898') | ForEach-Object { ('"'+$_+'"') | ConvertFrom-Json }
 $planPath = Join-Path $appRoot 'config\local-task-plan.json'
 if (Test-Path -LiteralPath $planPath) {
     $plan = Get-Content -LiteralPath $planPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $allowedTasks = @($taskNames) + ('"\u53d1\u8868\u89c2\u70b9"' | ConvertFrom-Json)
+    $basicTasks = @($taskNames[0..3])
+    $optionalTasks = @('\u6bcf\u65e5\u7b54\u9898','\u8ba2\u9605','\u53d1\u8868\u89c2\u70b9','\u8da3\u5473\u7b54\u9898') | ForEach-Object { ('"'+$_+'"') | ConvertFrom-Json }
+    $allowedTasks = $basicTasks + $optionalTasks
     $configured = @($plan.tasklist | Select-Object -Unique)
     if (!$configured.Count -or @($configured | Where-Object {$_ -notin $allowedTasks}).Count) { throw 'Invalid local task plan.' }
-    $taskNames = $configured
+    $order = if ($null -eq $plan.task_order) { @($optionalTasks) } else { @($plan.task_order) }
+    if ($order.Count -ne 4 -or @($order | Select-Object -Unique).Count -ne 4 -or @($order | Where-Object {$_ -notin $optionalTasks}).Count) { throw 'Invalid local task order.' }
+    $taskNames = @(($basicTasks + $order) | Where-Object { $_ -in $configured })
 }
 if ($CheckOnly) {
     foreach ($relative in @('scripts\Start-MaaXuexi.ps1','backend\webui.py','config\emulator.json','config\deepseek-key.dpapi')) {
@@ -81,7 +85,7 @@ try {
     if (@($taskNames | Where-Object { $_ -in $answerTasks }).Count -and !$health.api_key_configured) { throw 'DeepSeek API key is not configured.' }
     $payload = @{tasklist=$taskNames;fast_answer=$false;debug=$false;unattended=$true} | ConvertTo-Json -Compress
     $startPath = if ($VerificationFirst) { '/api/local/verify-full-flow' } else { '/api/local/schedule/start' }
-    if ($VerificationFirst) { Write-RunLog 'Temporary verification-first acceptance; saved daily plan is unchanged.' }
+    if ($VerificationFirst) { Write-RunLog 'Full-flow acceptance; basic tasks stay first and the saved daily plan is unchanged.' }
     $submittedAt = [DateTimeOffset]::UtcNow.AddSeconds(-1)
     $result = Invoke-RestMethod ($baseUrl+$startPath) -Method Post -ContentType 'application/json' -Body ([Text.Encoding]::UTF8.GetBytes($payload)) -TimeoutSec 10
     if ($result.status -eq 'skipped') { Write-RunLog 'Already started today; no task submitted.'; exit 0 }

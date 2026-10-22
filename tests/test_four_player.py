@@ -213,7 +213,7 @@ class FourPlayerTests(unittest.TestCase):
         value.read_learning_score = Mock(return_value={
             '趣味答题':dict(value=0,maximum=10),'每日答题':dict(value=0,maximum=5)})
         with patch('utils.plyer.notification.notify'):
-            value.task(['趣味答题','每日答题'],unattended=True)
+            value.task(['每日答题','趣味答题'],unattended=True)
         result = value.run_report.snapshot()
         self.assertEqual(result['status'],'needs_human')
         self.assertEqual(result['unfinished_tasks'],['每日答题','趣味答题'])

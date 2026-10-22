@@ -100,7 +100,7 @@ class OwnerContinuationTests(unittest.TestCase):
             value.pause('每日答题真实访问验证', resume_when=lambda: self.clock >= 2)
         value.funny_answer = Mock(side_effect=fun)
         value.daily_answer = Mock(side_effect=daily)
-        value.task(['趣味答题', '每日答题'], unattended=True)
+        value.task(['每日答题', '趣味答题'], unattended=True)
         self.assertEqual(value.run_report.snapshot()['status'], 'completed')
         self.assertEqual(len(set(run_ids)), 1)
         value.prepare_device.assert_called_once()

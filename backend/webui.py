@@ -23,7 +23,7 @@ from pydantic import BaseModel, SecretStr, ConfigDict, field_validator, StrictBo
 from key_store import key_configured, load_key, save_key
 from provider_support import MODEL, invalidate_validation, provider_metadata, test_connection
 from utils import MaaWorker
-from task_support import VERSION, read_report, ordered_tasks, ALIASES, TaskIncomplete
+from task_support import VERSION, read_report, ordered_tasks, ALIASES, OPTIONAL_TASKS, TaskIncomplete
 from comment_tasks import comment_policy
 from schedule_support import (ScheduleOptions, read_schedule, save_schedule, set_execution_mode,
     daily_started_today, claim_daily_run, release_daily_claim, rearm_for_run)
@@ -69,6 +69,16 @@ class TaskModel(BaseModel):
     @classmethod
     def normalize_tasks(cls, tasks):
         return ordered_tasks(tasks)
+
+class TaskPlanModel(TaskModel):
+    task_order: list[Literal['每日答题','订阅','发表观点','趣味答题']] | None = None
+
+    @field_validator('task_order')
+    @classmethod
+    def valid_order(cls, order):
+        if order is not None and (len(order)!=len(OPTIONAL_TASKS) or set(order)!=set(OPTIONAL_TASKS)):
+            raise ValueError('请完整排列每日答题、订阅、发表观点和趣味答题，每项仅出现一次。')
+        return order
 
 class AppState:
     def __init__(self):
@@ -179,6 +189,7 @@ async def validation_error(request, error):
 @app.get('/')
 def homepage():
     html = Path('page/index.html').read_text('utf-8')
+    html = html.replace('</body>', '<script defer src="/assets/task-order.js?v=' + VERSION + '"></script></body>')
     html = html.replace('</body>', '<script defer src="/assets/local-provider.js"></script></body>')
     html = html.replace('/assets/local-provider.js', '/assets/local-provider.js?v=' + VERSION)
     html = html.replace('</body>', '<script defer src="/assets/schedule-view.js?v=' + VERSION + '"></script></body>')
@@ -259,10 +270,13 @@ def get_task_plan():
     path = Path('config/local-task-plan.json')
     default = [name for name in ALIASES if name != '发表观点' or comment_policy()['enabled']]
     try:
-        plan = TaskModel(**json.loads(path.read_text('utf-8-sig')))
+        plan = TaskPlanModel(**json.loads(path.read_text('utf-8-sig')))
     except (OSError,ValueError,TypeError):
-        plan = TaskModel(tasklist=default)
-    return dict(**plan.model_dump(), available=list(ALIASES),
+        plan = TaskPlanModel(tasklist=default)
+    order = plan.task_order or list(OPTIONAL_TASKS)
+    value = dict(plan.model_dump(),task_order=order,
+                 tasklist=ordered_tasks(plan.tasklist,task_order=order))
+    return dict(**value, available=list(ALIASES),
                 experimental=[], experimental_live_verified=False)
 
 @app.get('/api/local/comment-policy')
@@ -403,7 +417,7 @@ def update_schedule(options: ScheduleOptions):
     return result
 
 @app.post('/api/local/task-plan')
-def save_task_plan(plan: TaskModel):
+def save_task_plan(plan: TaskPlanModel):
     with app_state.lock:
         if task_running():
             raise HTTPException(409,'请等当前任务结束后再保存定时清单。')
@@ -411,7 +425,10 @@ def save_task_plan(plan: TaskModel):
             raise HTTPException(400,'至少选择一项任务。')
         if '发表观点' in plan.tasklist and not comment_policy()['enabled']:
             raise HTTPException(409,'请先确认按正文生成的规则和每天发表范围，再加入定时清单。')
-        value = dict(tasklist=list(dict.fromkeys(plan.tasklist)),fast_answer=False,debug=False)
+        # Old callers and “save basic tasks” must not reset the optional order.
+        order = getattr(plan,'task_order',None) or get_task_plan()['task_order']
+        value = dict(tasklist=ordered_tasks(plan.tasklist,task_order=order),task_order=order,
+                     fast_answer=False,debug=False)
         path = Path('config/local-task-plan.json')
         path.parent.mkdir(parents=True,exist_ok=True)
         temporary = path.with_suffix('.tmp')
@@ -575,7 +592,14 @@ def continuation_tasks(report):
     if report.get('status') not in ('stopped','partial','failed','needs_human','paused','running'):
         return []
     tasks=report.get('tasks',{})
-    return [name for name in ALIASES if name in tasks] if isinstance(tasks,dict) else []
+    if not isinstance(tasks,dict):
+        return []
+    selected=report.get('selected_tasks',[])
+    selected=selected if isinstance(selected,list) else []
+    # Explicit run order survives reloaded/sorted JSON and later plan edits.
+    names=[name for name in selected if isinstance(name,str) and name in tasks and name in ALIASES]
+    names.extend(name for name in tasks if name in ALIASES and name not in names)
+    return ordered_tasks(names)
 
 @app.post('/api/pause')
 def pause_tasks():

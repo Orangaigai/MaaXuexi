@@ -503,8 +503,8 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             self.ai_resolver.timing_hook=lambda seconds:record_time(self,'模型请求',seconds)
         self.run_report.update(unattended=unattended)
         if verification_first:
-            self.run_report.update(verification_first=True)
-            self.send_log('本轮临时先执行验证相关任务，随后自动继续文章、视听与本地；每日默认顺序不变')
+            self.run_report.update(acceptance_test='full_flow')
+            self.send_log('完整流程验收：基础任务优先，其余按本轮所选顺序执行，不修改已保存清单')
         if daily_acceptance:
             self.run_report.update(acceptance_test='daily_fresh_round', new_points_claimed=False)
         current = None

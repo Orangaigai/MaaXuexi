@@ -31,6 +31,7 @@ jobs:
       - name: JavaScript syntax
         run: |
           node --check page/assets/local-provider.js
+          node --check page/assets/task-order.js
           node --check page/assets/local-schedule.js
           node --check page/assets/points-history.js
           node --check page/assets/history-import.js

@@ -31,7 +31,7 @@ class UnattendedTests(unittest.TestCase):
     def test_api_normalizes_order_even_if_daily_is_requested_first(self):
         selected = ['每日答题', '趣味答题', '发表观点', '订阅', '本地频道', '视听学习', '选读文章', '登录', '每日答题']
         self.assertEqual(webui.TaskModel(tasklist=selected).tasklist,
-                         ['登录','选读文章','视听学习','本地频道','每日答题','订阅','发表观点','趣味答题'])
+                         ['登录','选读文章','视听学习','本地频道','每日答题','趣味答题','发表观点','订阅'])
 
     def test_expired_unattended_wait_raises_without_android_input(self):
         value = self.guarded_worker()
@@ -56,7 +56,7 @@ class UnattendedTests(unittest.TestCase):
         value.daily_answer = Mock()
         value.subscribe = Mock(return_value=dict(value=2,maximum=2))
         with patch('utils.plyer.notification.notify'):
-            value.task(['每日答题', '趣味答题', '选读文章','订阅'], unattended=True)
+            value.task(['每日答题', '订阅', '趣味答题', '选读文章'], unattended=True)
         report = value.run_report.snapshot()
         self.assertEqual(list(report['tasks']), ['选读文章', '每日答题', '订阅','趣味答题'])
         self.assertEqual(report['status'], 'needs_human')

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>MaaXuexi · 任务控制台</title>
-  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261022.4">
-  <link rel="stylesheet" href="/assets/console.css?v=local-20261022.4">
+  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261022.5">
+  <link rel="stylesheet" href="/assets/console.css?v=local-20261022.5">
 </head>
 <body>
 <main>
@@ -35,15 +35,16 @@
   <div class="control-layout">
   <section class="card task-card" aria-labelledby="taskHeading">
     <div class="section-heading"><h2 id="taskHeading" tabindex="-1">任务清单</h2><div class="section-meta"><span id="taskSelectionCount"></span><span id="taskEditState" class="schedule-edit">读取中</span><button id="taskReset" class="text-button" hidden disabled aria-label="还原为已保存的任务清单">还原</button></div></div>
-    <p class="section-description">选择本次任务；保存后，下次会沿用这份清单。</p>
+    <p class="section-description">基础任务优先；其余可调整顺序。保存后，定时执行也会沿用。</p>
     <div id="choices" class="task-grid console-task-grid" role="group" aria-labelledby="taskHeading">
       <section class="task-group" aria-labelledby="basicTaskHeading">
-        <div class="task-group-heading"><h3 id="basicTaskHeading">基础任务</h3><span>优先执行</span></div>
+        <div class="task-group-heading"><h3 id="basicTaskHeading">基础任务</h3><span>固定优先</span></div>
         <div id="basicChoices" class="task-items"></div>
       </section>
       <section class="task-group" aria-labelledby="verificationTaskHeading">
-        <div class="task-group-heading"><h3 id="verificationTaskHeading" class="verification-tag">可能需本人验证</h3><span>随后执行</span></div>
-        <div id="verificationChoices" class="task-items"></div>
+        <div class="task-group-heading"><h3 id="verificationTaskHeading" class="verification-tag">可能需本人验证</h3><span>按你的顺序</span></div>
+        <p id="taskOrderHint" class="task-order-hint">拖动或用箭头排序，仅执行勾选的任务。</p>
+        <div id="verificationChoices" class="task-items" role="list" aria-describedby="taskOrderHint"></div>
       </section>
     </div>
     <div class="task-actions"><button id="save" class="accent" disabled>保存所选任务</button><button id="saveBase" class="quiet" disabled title="保存登录、选读文章、视听学习、本地频道四项">保存基础任务</button><button id="start" class="primary start-button" disabled>立即执行</button></div>

@@ -5,8 +5,11 @@
   const verificationTasks=new Set(['趣味答题','订阅','发表观点','每日答题']);
   const aiTasks=new Set(['趣味答题','发表观点','每日答题']);
   const inputs=new Map();
-  let commentEnabled=false,loaded=false,busy=false,health=null,provider=null,deviceList=[],savedTasks=null;
+  let commentEnabled=false,loaded=false,busy=false,health=null,provider=null,deviceList=[],savedTasks=null,savedOrder=null;
   let refreshing=null,refreshController=null,refreshRevision=0,pendingButton=null;
+  const taskOrder=new window.MaaTaskOrder($('verificationChoices'),names.filter(name=>verificationTasks.has(name)),message=>{
+    $('actionMessage').dataset.tone='info';$('actionMessage').textContent=message;renderSavedState();
+  });
   const buttonLabels={save:'保存所选任务',saveBase:'保存基础任务',start:'立即执行',resume:'继续执行',stop:'中止任务'};
   for(const name of names){
     const label=document.createElement('label'),input=document.createElement('input');
@@ -14,7 +17,8 @@
     const copy=document.createElement('span'),title=document.createElement('span');
     copy.className='task-copy';title.textContent=name;copy.append(title);
     label.append(input,copy);
-    $(verificationTasks.has(name)?'verificationChoices':'basicChoices').append(label);inputs.set(name,input);
+    if(verificationTasks.has(name))taskOrder.append(name,label);else $('basicChoices').append(label);
+    inputs.set(name,input);
     input.addEventListener('change',()=>{$('actionMessage').textContent='';renderSavedState();});
   }
   async function request(path,body,signal){
@@ -25,8 +29,9 @@
     if(!response.ok||result.status==='failed')throw Error(typeof result.detail==='string'?result.detail:result.message||'请求未成功，请稍后重试。');
     return result;
   }
-  const plan=()=>({tasklist:[...inputs].filter(([,input])=>input.checked).map(([name])=>name),fast_answer:false,debug:false});
+  const plan=()=>({tasklist:[...names.filter(name=>!verificationTasks.has(name)),...taskOrder.value()].filter(name=>inputs.get(name).checked),fast_answer:false,debug:false});
   const selectionKey=tasks=>[...tasks].sort().join('|');
+  const taskChanged=()=>savedTasks!==null&&(selectionKey(plan().tasklist)!==selectionKey(savedTasks)||taskOrder.value().join('|')!==savedOrder.join('|'));
   function renderActionEmphasis(){
     const configureFirst=(provider?.configured===false||health?.api_key_configured===false)&&plan().tasklist.some(name=>aiTasks.has(name));
     const continueFirst=Boolean(health?.can_continue);
@@ -35,7 +40,7 @@
     $('providerSetup').classList.toggle('primary',configureFirst);
   }
   function renderSavedState(){
-    const changed=savedTasks!==null&&selectionKey(plan().tasklist)!==selectionKey(savedTasks);
+    const changed=taskChanged();
     $('taskSelectionCount').textContent=loaded?`已选 ${plan().tasklist.length} 项`:'';
     $('taskEditState').textContent=!loaded?'读取中':changed?'有修改，尚未保存':'已保存';
     $('taskEditState').classList.toggle('unsaved',changed);
@@ -44,6 +49,7 @@
   }
   $('taskReset').onclick=()=>{
     for(const[name,input]of inputs)input.checked=savedTasks.includes(name);
+    taskOrder.set(savedOrder);
     $('actionMessage').textContent='';renderSavedState();
     [...inputs.values()].find(input=>!input.disabled)?.focus();
   };
@@ -68,6 +74,7 @@
     $('runtimeCard').classList.toggle('is-complete',!running&&!importing&&health?.run_summary?.status==='completed');
     $('runtimeCard').classList.toggle('is-offline',loaded&&!health);
     for(const[name,input]of inputs)input.disabled=!loaded||busy||running||(name==='发表观点'&&!commentEnabled);
+    taskOrder.disable(!loaded||busy||running);
     $('start').disabled=!loaded||busy||running||importing||!health;
     $('save').disabled=!loaded||busy||running||!health;
     $('saveBase').disabled=!loaded||busy||running||!health;
@@ -105,9 +112,10 @@
     act('/api/start',body,'已开始执行所选任务。','start');
   };
   async function savePlan(body,button){
-    const result=await act('/api/local/task-plan',body,'任务清单已保存。',button);
+    const result=await act('/api/local/task-plan',{...body,task_order:taskOrder.value()},'任务清单及顺序已保存。',button);
     if(result){
       savedTasks=[...result.tasklist];
+      taskOrder.set(result.task_order);savedOrder=taskOrder.value();
       for(const[name,input]of inputs)input.checked=result.tasklist.includes(name);
       renderSavedState();
     }
@@ -203,6 +211,7 @@
     try{
       const saved=await request('/api/local/task-plan');
       savedTasks=[...saved.tasklist];
+      taskOrder.set(saved.task_order);savedOrder=taskOrder.value();
       for(const[name,input]of inputs)input.checked=saved.tasklist.includes(name);loaded=true;
     }catch(error){$('actionMessage').dataset.tone='error';$('actionMessage').textContent=error.message;}
     controls();await refreshProvider();
@@ -233,7 +242,7 @@
   }
   window.addEventListener('hashchange',openLinkedLog);openLinkedLog();
   window.addEventListener('beforeunload',event=>{
-    if(savedTasks!==null&&selectionKey(plan().tasklist)!==selectionKey(savedTasks)){
+    if(taskChanged()){
       event.preventDefault();event.returnValue='';
     }
   });

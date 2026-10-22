@@ -7,19 +7,25 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "local-20261022.4"
+VERSION = "local-20261022.5"
 REPORT_PATH = Path("config/last-run.json")
-# Basic tasks first; competitive matching last, as requested after recent runs.
-# Any quiz or public action may require verification; this is not a platform rule.
+# Basic tasks stay first; the remaining default order can be customized.
+# This grouping does not promise that a task is free of verification.
 ALIASES = {"登录": "登录", "选读文章": "我要选读文章", "视听学习": "我要视听学习", "本地频道": "本地频道", "每日答题": "每日答题", "订阅": "订阅", "发表观点": "发表观点", "趣味答题": "趣味答题"}
+BASIC_TASKS = ('登录','选读文章','视听学习','本地频道')
+OPTIONAL_TASKS = ('每日答题','订阅','发表观点','趣味答题')
 BOUNDARIES = ("登录", "我要选读文章", "我要视听学习", "每日答题", "趣味答题", "订阅", "强国运动", "专项答题", "每周答题", "发表观点", "本地频道")
 
 
-def ordered_tasks(tasks, verification_first=False):
+def ordered_tasks(tasks, verification_first=False, *, task_order=None):
     selected = list(dict.fromkeys(tasks))
-    order = ('登录','趣味答题','每日答题','订阅','发表观点','选读文章','视听学习','本地频道') if verification_first else ALIASES
-    priority = {name:index for index,name in enumerate(order)}
-    return sorted(selected, key=lambda name:priority.get(name,len(priority)))
+    # Keep the legacy acceptance argument, but never move basic tasks behind
+    # verification tasks. Without a plan, preserve the requested optional order.
+    remaining = [name for name in selected if name not in BASIC_TASKS]
+    if task_order is not None:
+        priority = {name:index for index,name in enumerate(task_order)}
+        remaining.sort(key=lambda name:priority.get(name,len(priority)))
+    return [name for name in BASIC_TASKS if name in selected] + remaining
 
 
 class TaskCancelled(Exception):
@@ -156,9 +162,11 @@ def read_report():
 
 class RunReport:
     def __init__(self, tasks):
+        tasks=list(dict.fromkeys(tasks))
         self.lock = threading.RLock()
         self.data = dict(version=VERSION, run_id=uuid.uuid4().hex[:12], started_at=now(),
                          finished_at=None, status="running", pause_reason=None,
+                         selected_tasks=tasks.copy(),
                          tasks={name:dict(state="pending", before=None, after=None) for name in tasks})
         self.save()
 

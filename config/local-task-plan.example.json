@@ -1,5 +1,6 @@
 {
   "tasklist": ["登录", "选读文章", "视听学习", "本地频道"],
+  "task_order": ["每日答题", "订阅", "发表观点", "趣味答题"],
   "fast_answer": false,
   "debug": false
 }
