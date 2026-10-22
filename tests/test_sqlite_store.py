@@ -7,9 +7,11 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
 from sqlite_store import store_connection
+import sqlite_store
 from comment_tasks import CommentJournal
 
 TEXT = '原来纸巾压花还可以减少分层，学到了！'
@@ -78,3 +80,134 @@ class SQLiteStoreTests(unittest.TestCase):
                 self.assertEqual(future.result(timeout=2), [TEXT])
             finally:
                 writer.rollback()
+
+    def test_another_thread_cannot_open_until_the_first_schema_is_committed(self):
+        initializing=threading.Event();release=threading.Event()
+        second_started=threading.Event();second_opened=threading.Event()
+        actual_connect=sqlite3.connect;opened=[]
+        def connect(*args,**kwargs):
+            opened.append(True)
+            if len(opened)==2:second_opened.set()
+            return actual_connect(*args,**kwargs)
+        def initialize(db):
+            initializing.set()
+            if not release.wait(5):raise TimeoutError('test did not release initializer')
+            db.execute('CREATE TABLE sample(value INTEGER)')
+        def read(second=False):
+            if second:second_started.set()
+            with store_connection(self.path,initialize) as db:
+                return db.execute('SELECT COUNT(*) FROM sample').fetchone()[0]
+        with patch.object(sqlite_store.sqlite3,'connect',side_effect=connect), ThreadPoolExecutor(max_workers=2) as pool:
+            first=pool.submit(read)
+            try:
+                self.assertTrue(initializing.wait(3))
+                second=pool.submit(read,True)
+                self.assertTrue(second_started.wait(3))
+                self.assertFalse(second_opened.wait(.2),'Second connect reached an uninitialized file')
+            finally:
+                release.set()
+            self.assertEqual(first.result(timeout=5),0)
+            self.assertEqual(second.result(timeout=5),0)
+        self.assertEqual(len(opened),2)
+
+    def test_open_guard_does_not_serialize_business_readers(self):
+        initialized=lambda db:db.execute('CREATE TABLE sample(value INTEGER)')
+        with store_connection(self.path,initialized):pass
+        first_in_body=threading.Event();second_in_body=threading.Event()
+        def read(first):
+            with store_connection(self.path,initialized):
+                if first:
+                    first_in_body.set()
+                    if not second_in_body.wait(3):raise TimeoutError('open guard leaked into body')
+                else:
+                    second_in_body.set()
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            first=pool.submit(read,True)
+            self.assertTrue(first_in_body.wait(3))
+            second=pool.submit(read,False)
+            first.result(timeout=5);second.result(timeout=5)
+
+    @staticmethod
+    def operational_error(code=sqlite3.SQLITE_READONLY):
+        error=sqlite3.OperationalError('injected storage error')
+        error.sqlite_errorcode=code
+        return error
+
+    def test_transient_readonly_closes_old_connection_and_rolls_back_before_reopening(self):
+        actual_connect=sqlite3.connect;connections=[];attempts=[]
+        def connect(*args,**kwargs):
+            if connections:
+                with self.assertRaises(sqlite3.ProgrammingError):connections[-1].execute('SELECT 1')
+            db=actual_connect(*args,**kwargs);connections.append(db);return db
+        def initialize(db):
+            attempts.append(True)
+            db.execute('CREATE TABLE sample(value INTEGER)')
+            db.execute('INSERT INTO sample VALUES(1)')
+            if len(attempts)<3:raise self.operational_error()
+        with patch.object(sqlite_store.sqlite3,'connect',side_effect=connect), patch.object(sqlite_store.time,'sleep') as delay:
+            with store_connection(self.path,initialize) as db:
+                self.assertEqual(db.execute('SELECT * FROM sample').fetchall()[0][0],1)
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM sample').fetchone()[0],1)
+        self.assertEqual(len(connections),3);self.assertEqual(delay.call_count,2)
+        with self.assertRaises(sqlite3.ProgrammingError):connections[-1].execute('SELECT 1')
+
+    def test_persistent_readonly_stops_after_three_attempts_without_yielding(self):
+        error=self.operational_error();initialize=Mock(side_effect=error)
+        with patch.object(sqlite_store.time,'sleep') as delay:
+            with self.assertRaises(sqlite3.OperationalError) as caught:
+                with store_connection(self.path,initialize):self.fail('Should not yield')
+        self.assertIs(caught.exception,error)
+        self.assertEqual(initialize.call_count,3);self.assertEqual(delay.call_count,2)
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],0)
+
+    def test_readonly_after_yield_never_replays_body_or_duplicates_a_write(self):
+        initialize=Mock(side_effect=lambda db:db.execute('CREATE TABLE sample(value INTEGER)'))
+        body=Mock();error=self.operational_error()
+        with patch.object(sqlite_store.time,'sleep') as delay:
+            with self.assertRaises(sqlite3.OperationalError) as caught:
+                with store_connection(self.path,initialize) as db:
+                    body();db.execute('INSERT INTO sample VALUES(1)')
+                    raise error
+        self.assertIs(caught.exception,error);body.assert_called_once();initialize.assert_called_once()
+        delay.assert_not_called()
+        with closing(sqlite3.connect(self.path)) as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM sample').fetchone()[0],0)
+
+    def test_other_or_unclassified_errors_are_not_retried(self):
+        errors=[self.operational_error(sqlite3.SQLITE_READONLY_DBMOVED),
+                self.operational_error(sqlite3.SQLITE_BUSY),sqlite3.OperationalError('readonly'),OSError('permissions')]
+        for error in errors:
+            with self.subTest(error=repr(error)):
+                initialize=Mock(side_effect=error)
+                with patch.object(sqlite_store.time,'sleep') as delay:
+                    with self.assertRaises(type(error)):
+                        with store_connection(self.path,initialize):self.fail('Should not yield')
+                initialize.assert_called_once();delay.assert_not_called()
+
+    def test_initial_connect_readonly_also_has_a_bounded_reopen(self):
+        actual_connect=sqlite3.connect;attempts=[]
+        def connect(*args,**kwargs):
+            attempts.append(True)
+            if len(attempts)<3:raise self.operational_error()
+            return actual_connect(*args,**kwargs)
+        with patch.object(sqlite_store.sqlite3,'connect',side_effect=connect), patch.object(sqlite_store.time,'sleep'):
+            with store_connection(self.path,lambda db:db.execute('CREATE TABLE sample(value INTEGER)')) as db:
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM sample').fetchone()[0],0)
+        self.assertEqual(len(attempts),3)
+
+    def test_real_sqlite_readonly_connection_is_closed_before_reopening_writable(self):
+        self.path.touch()
+        actual_connect=sqlite3.connect;connections=[]
+        def connect(*args,**kwargs):
+            if not connections:
+                db=actual_connect(self.path.as_uri()+'?mode=ro',uri=True)
+            else:
+                with self.assertRaises(sqlite3.ProgrammingError):connections[-1].execute('SELECT 1')
+                db=actual_connect(*args,**kwargs)
+            connections.append(db)
+            return db
+        with patch.object(sqlite_store.sqlite3,'connect',side_effect=connect), patch.object(sqlite_store.time,'sleep') as delay:
+            with store_connection(self.path,lambda db:db.execute('CREATE TABLE sample(value INTEGER)')) as db:
+                self.assertEqual(db.execute('SELECT COUNT(*) FROM sample').fetchone()[0],0)
+        self.assertEqual(len(connections),2);delay.assert_called_once_with(.05)
