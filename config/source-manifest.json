@@ -290,7 +290,7 @@
   "tests/test_settings_navigation.py": "e4822c94d03be77ef7703900a8d6f93dcc3bfb3cdb3534efe199502d943f51b8",
   "tests/test_single_pass_20261015.py": "5ccf7e78b681cdb08fe67bfc7a699011e9f3d2dc2190fdb4aa8f3f1c86d9d99a",
   "tests/test_speed_20261016.py": "b64cb070022ed203f75e4331085fd702d0f0671db279034bc62aa3bebba91723",
-  "tests/test_startup.py": "e162300c25737115c501bb936b6978543c34211a55d9dfc5c886e6bc0e643825",
+  "tests/test_startup.py": "63e598787d0c83774d36a3b21f7cab58a13253e46c01bee4aae4679fce7d2f61",
   "tests/test_subscriptions.py": "c9e1349e7ce95078930b3d10113090f4e4a27b0d839d1c668f08be71f5f14c73",
   "tests/test_unattended.py": "46c3d5d26472627d3e06dede5c1ab12e962956b12cde29fc165e3e7e2a09e7f9",
   "tests/test_video_transition.py": "b4c4c57549592876209c7a3cf819ae1ece7ea68e3721de21da760969080329eb",

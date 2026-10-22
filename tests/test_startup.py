@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 import device_support
 import task_support
+import schedule_support
 import webui
 from test_optimization import worker, job
 
@@ -21,17 +22,22 @@ class StartupTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         patcher = patch.object(task_support, "REPORT_PATH", Path(temp.name) / "run.json")
         patcher.start(); self.addCleanup(patcher.stop)
+        schedule_path=patch.object(schedule_support,'CONFIG_PATH',Path(temp.name)/'schedule.json')
+        schedule_path.start(); self.addCleanup(schedule_path.stop)
 
     def test_start_accepts_disconnected_device_and_runs_preparation(self):
         state = webui.AppState(); value = worker(); value.connected = False
         value.task = Mock(); value.request_stop = Mock(); state.worker = value
-        with patch.object(webui, "app_state", state):
+        with patch.object(webui, "app_state", state), \
+             patch.object(webui,'rearm_for_run',return_value=None) as rearm:
             result = webui.start(webui.TaskModel(tasklist=["选读文章"]))
             thread = state.child_process
             if thread:
-                thread.join(2)
+                thread.join(5)
+                self.assertFalse(thread.is_alive(),'Startup test worker must finish before restoring shared state')
             self.assertEqual(result["status"], "success")
             value.task.assert_called_once_with(["选读文章"], False, False, unattended=False)
+            rearm.assert_called_once_with(migrate_legacy=True)
 
     def test_stale_connected_flag_is_not_reported_as_online(self):
         value = worker(); value.connected = True
