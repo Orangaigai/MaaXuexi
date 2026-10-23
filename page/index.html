@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>MaaXuexi · 任务控制台</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=local-20261023.4">
-  <link rel="icon" type="image/svg+xml" sizes="any" href="/assets/logo.svg?v=local-20261023.4">
-  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261023.4">
-  <link rel="stylesheet" href="/assets/console.css?v=local-20261023.4">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=local-20261023.5">
+  <link rel="icon" type="image/svg+xml" sizes="any" href="/assets/logo.svg?v=local-20261023.5">
+  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261023.5">
+  <link rel="stylesheet" href="/assets/console.css?v=local-20261023.5">
 </head>
 <body>
 <main>
@@ -17,9 +17,9 @@
   </header>
   <div class="overview">
     <section class="card runtime-card" id="runtimeCard" aria-labelledby="runtimeHeading">
-      <div class="section-heading"><h2 id="runtimeHeading"><span class="status-mark" aria-hidden="true"></span>运行状态</h2><span id="runMode" class="badge">读取执行方式…</span></div>
+      <div class="section-heading"><h2 id="runtimeHeading"><span id="runtimeSymbol" class="status-mark" aria-hidden="true">·</span>运行状态 <span id="runtimeState" class="runtime-state">连接中</span></h2><span id="runMode" class="badge">读取执行方式…</span></div>
       <div id="status" role="status" aria-live="polite">正在读取任务状态…</div>
-      <div id="runProgressBlock" class="run-progress" hidden><div><span>本轮进度</span><span id="runProgressCount"></span></div><progress id="runProgress" value="0" max="1" aria-label="已确认的任务项数"></progress></div>
+      <div id="runProgressBlock" class="run-progress" hidden><div><span id="runProgressLabel">本轮进度</span><span id="runProgressCount"></span></div><progress id="runProgress" value="0" max="1" aria-label="已确认的任务项数"></progress></div>
       <div class="bar runtime-actions"><button id="pause" hidden>暂停</button><button id="resume" class="primary" hidden>继续执行</button><button id="stop" class="danger" hidden>中止任务</button><select id="device" hidden aria-label="选择模拟器"></select><button id="connect" hidden>连接模拟器</button></div>
       <p id="runMessage" class="feedback" role="status" aria-live="polite"></p>
       <div id="completionBanner" class="completion-banner" hidden><span id="completionMessage" role="status"></span><button id="keepOpen" class="compact">本次保持打开</button></div>

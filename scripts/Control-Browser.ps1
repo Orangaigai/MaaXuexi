@@ -1,13 +1,66 @@
+# Keep browser data out of config backups. Move the whole dedicated profile only
+# while closed; never merge, delete, or stop an unverified browser to migrate it.
+function Get-ControlProfilePaths([string]$Root) {
+    $rootPath = [IO.Path]::GetFullPath($Root)
+    $legacy = Join-Path $rootPath 'config\control-browser'
+    $profile = Join-Path $rootPath 'runtime\control-browser'
+    foreach ($path in @($legacy,$profile)) {
+        if (![IO.Path]::GetFullPath($path).StartsWith($rootPath.TrimEnd('\')+'\',[StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Control browser profile must remain inside this installation.'
+        }
+    }
+    foreach ($path in @($rootPath,(Join-Path $rootPath 'config'),(Join-Path $rootPath 'runtime'),(Join-Path $rootPath 'logs'),(Join-Path $rootPath 'logs\control-profile.lock'),$legacy,$profile)) {
+        if ((Test-Path -LiteralPath $path) -and ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Control browser migration does not follow junctions or symbolic links.'
+        }
+    }
+    return @($legacy,$profile)
+}
+
+function Get-ControlBrowserProfile([string]$Root) {
+    $rootPath = [IO.Path]::GetFullPath($Root)
+    $paths = Get-ControlProfilePaths $rootPath
+    $legacy = $paths[0];$profile = $paths[1]
+    if (!(Test-Path -LiteralPath $legacy)) { return $profile }
+    if (Test-Path -LiteralPath $profile) {
+        Write-Host 'Both control profiles exist; keeping the old profile without merging data.'
+        return $legacy
+    }
+    $guard = $null
+    try {
+        $logs = Join-Path $rootPath 'logs'
+        $null = New-Item -ItemType Directory -Path $logs -Force -ErrorAction Stop
+        $guard = [IO.File]::Open((Join-Path $logs 'control-profile.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+        if (!(Test-Path -LiteralPath $legacy)) { return $profile }
+        if (Test-Path -LiteralPath $profile) { return $legacy }
+        $pattern = '(?:^|\s)--user-data-dir=(?:"'+[regex]::Escape($legacy)+'"|'+[regex]::Escape($legacy)+')(?=\s|$)'
+        $items = Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'" -ErrorAction Stop
+        if ($items | Where-Object { [string]::IsNullOrWhiteSpace($_.CommandLine) }) { return $legacy }
+        if ($items | Where-Object { $_.CommandLine -match $pattern }) { return $legacy }
+        $null = New-Item -ItemType Directory -Path (Join-Path $rootPath 'runtime') -Force -ErrorAction Stop
+        # Both paths were checked inside this installation. An atomic rename
+        # refuses an existing destination instead of merging/nesting profiles.
+        [IO.Directory]::Move($legacy,$profile)
+        return $profile
+    } catch {
+        Write-Host 'Control profile migration deferred; existing browser data kept.'
+        return $legacy
+    } finally {
+        if ($guard) { $guard.Dispose() }
+    }
+}
+
 # A dedicated browser profile lets this project close its own window only.
 function Get-OwnedControlBrowser([string]$Root) {
     $recordPath = Join-Path $Root 'logs\control-browser.json'
     if (!(Test-Path -LiteralPath $recordPath)) { return }
     try {
         $record = Get-Content -LiteralPath $recordPath -Raw -Encoding UTF8 | ConvertFrom-Json
-        $profile = Join-Path $Root 'config\control-browser'
-        if ($record.root -ne $Root -or $record.profile -ne $profile) { return }
+        $allowed = Get-ControlProfilePaths $Root
+        if ($record.root -ne $Root -or $record.profile -notin $allowed) { return }
+        $profile = $record.profile
         $proc = Get-Process -Id ([int]$record.pid) -ErrorAction Stop
-        $started = [DateTime]::Parse([string]$record.start_utc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime()
+        $started = if ($record.start_utc -is [DateTime]) { $record.start_utc.ToUniversalTime() } else { [DateTime]::Parse([string]$record.start_utc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() }
         if ($proc.Path -ne $record.executable -or $proc.StartTime.ToUniversalTime().Ticks -ne $started.Ticks) { return }
         $command = (Get-CimInstance Win32_Process -Filter ('ProcessId='+$proc.Id)).CommandLine
         $profilePattern = '(?:^|\s)--user-data-dir=(?:"'+[regex]::Escape($profile)+'"|'+[regex]::Escape($profile)+')(?=\s|$)'
@@ -34,7 +87,7 @@ function Open-ControlBrowser([string]$Root) {
     )
     $browser = $candidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
     if (!$browser) { $null = Start-Process -FilePath 'http://127.0.0.1:8000/'; return }
-    $profile = Join-Path $Root 'config\control-browser'
+    $profile = Get-ControlBrowserProfile $Root
     $arguments = @('--app=http://127.0.0.1:8000/',('--user-data-dir="'+$profile+'"'),
         '--no-first-run','--no-default-browser-check','--disable-background-mode',
         '--disable-extensions','--window-size=1180,940')

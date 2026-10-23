@@ -6,7 +6,7 @@
   const aiTasks=new Set(['趣味答题','发表观点','每日答题']);
   const inputs=new Map();
   let commentEnabled=false,loaded=false,busy=false,health=null,provider=null,deviceList=[],savedTasks=null,savedOrder=null;
-  let refreshing=null,refreshController=null,refreshRevision=0,pendingButton=null;
+  let refreshing=null,refreshController=null,refreshRevision=0,pendingButton=null,lastRun=null;
   const taskOrder=new window.MaaTaskOrder($('verificationChoices'),names.filter(name=>verificationTasks.has(name)),message=>{
     $('actionMessage').dataset.tone='info';$('actionMessage').textContent=message;renderSavedState();
   });
@@ -54,25 +54,35 @@
     [...inputs.values()].find(input=>!input.disabled)?.focus();
   };
   function renderProgress(){
-    const run=health?.run_summary,rows=names.filter(name=>run?.tasks?.[name]).map(name=>run.tasks[name]);
+    const run=health?.run_summary||lastRun,rows=names.filter(name=>run?.tasks?.[name]).map(name=>run.tasks[name]);
     const confirmed=rows.filter(row=>['verified','skipped_full','credited','skipped_mode'].includes(row.state)).length;
-    $('runProgressBlock').hidden=!rows.length||!(health?.task_running||health?.can_continue);
-    if(!health)return;
+    $('runProgressBlock').hidden=!rows.length;
+    $('runProgressLabel').textContent=health?'本轮进度':'上次确认的进度';
     $('runProgress').max=Math.max(1,rows.length);$('runProgress').value=confirmed;
     $('runProgress').setAttribute('aria-valuetext',`已确认 ${confirmed} 项，共 ${rows.length} 项`);
     $('runProgressCount').textContent=`${confirmed} / ${rows.length} 项已确认`;
     const stamp=Date.parse(run?.finished_at||run?.started_at||'');
     $('runMeta').textContent=Number.isFinite(stamp)?
       new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(stamp)+
-      (run.finished_at?' 结束':' 开始')+(run.finished_at&&rows.length?` · ${confirmed}/${rows.length} 项已确认`:''):'';
+      (run.finished_at?' 结束':' 开始'):'';
   }
   function controls(){
     const running=Boolean(health?.task_running),paused=Boolean(health?.paused),requested=Boolean(health?.pause_requested);
     const importing=Boolean(health?.history_import?.active);
-    $('runtimeCard').classList.toggle('is-running',(running&&!paused)||importing);
-    $('runtimeCard').classList.toggle('is-waiting',Boolean(paused||health?.can_continue));
-    $('runtimeCard').classList.toggle('is-complete',!running&&!importing&&health?.run_summary?.status==='completed');
-    $('runtimeCard').classList.toggle('is-offline',loaded&&!health);
+    const run=health?.run_summary;
+    const state=!health?(loaded?'offline':'connecting'):importing?'importing':running?
+      requested?'pausing':paused?(health.manual_paused||run?.pause_kind==='manual'?'paused':'verification'):'running':
+      run?.status==='completed'?'complete':health.can_continue?'incomplete':
+      health.last_error||['failed','error'].includes(run?.status)?'error':['cancelled','stopped'].includes(run?.status)?'stopped':'idle';
+    const labels={connecting:['·','连接中'],offline:['!','后台未连接'],idle:['·','待执行'],
+      importing:['↻','导入中'],running:['↻','执行中'],pausing:['Ⅱ','正在暂停'],paused:['Ⅱ','手动暂停'],
+      verification:['!','等待本人处理'],incomplete:['…','待补做'],complete:['✓','本轮完成'],error:['!','需要处理'],stopped:['■','已中止']};
+    $('runtimeCard').dataset.state=state;
+    $('runtimeSymbol').textContent=labels[state][0];$('runtimeState').textContent=labels[state][1];
+    $('runtimeCard').classList.toggle('is-running',['running','importing'].includes(state));
+    $('runtimeCard').classList.toggle('is-waiting',state==='verification');
+    $('runtimeCard').classList.toggle('is-complete',state==='complete');
+    $('runtimeCard').classList.toggle('is-offline',state==='offline');
     for(const[name,input]of inputs)input.disabled=!loaded||busy||running||(name==='发表观点'&&!commentEnabled);
     taskOrder.disable(!loaded||busy||running);
     $('start').disabled=!loaded||busy||running||importing||!health;
@@ -175,7 +185,7 @@
     try{
       const response=await request('/api/status',undefined,controller.signal);
       if(ticket!==refreshRevision)return;
-      health=response;$('connection').textContent=health.connected?'模拟器已连接':'本机服务已连接';
+      health=response;lastRun=health.run_summary||null;$('connection').textContent=health.connected?'模拟器已连接':'本机服务已连接';
       $('connection').dataset.state=health.connected?'device':'online';
       $('connection').title=health.connected?'当前模拟器已连接。':'执行任务时会自动准备模拟器。';
       const run=health.run_summary;let text='选择任务后即可开始。';
@@ -184,15 +194,17 @@
         if(health.pause_requested)text='正在暂停，当前操作结束后将停下。';
         else if(health.paused)text=health.manual_paused?'任务已暂停，点击“继续执行”恢复。':'请在模拟器处理验证或提示，完成后会自动继续。';
         else text=run?.phase||'正在准备任务…';
-      }else if(run?.status==='completed')text='本轮任务已结束，积分已核对。';
+      }else if(run?.status==='completed')text='本轮所选任务已完成，积分已核对。';
       else if(health.can_continue){
         const remaining=(run?.unfinished_tasks||[]).join('、');
         text='本轮已结束'+(remaining?'；待补做：'+remaining:'，还有任务未完成')+'。点击“继续执行”补做，已满分项目会跳过。';
       }
-      else if(health.last_error)text='任务未完成，请查看每日积分中的任务详情。';
+      else if(health.last_error||['failed','error'].includes(run?.status))text='任务未完成，请查看每日积分中的任务详情。';
+      else if(['cancelled','stopped'].includes(run?.status))text='本轮已中止，可查看积分记录和任务详情。';
       $('status').textContent=text;renderProvider();
       document.title=(health.history_import?.active?'[导入中] ':health.task_running?(health.paused?'[已暂停] ':'[运行中] '):health.can_continue?'[待补做] ':'')+'MaaXuexi · 任务控制台';
     }catch{if(ticket!==refreshRevision)return;health=null;$('status').textContent='后台暂未连接，正在等待恢复…';
+      document.title='[未连接] MaaXuexi · 任务控制台';
       $('connection').textContent='正在重连后台';$('connection').dataset.state='offline';$('connection').title='暂未读到新状态，页面会自动重连。';}
     controls();
     })().finally(()=>{clearTimeout(timer);if(ticket===refreshRevision)refreshing=null;});

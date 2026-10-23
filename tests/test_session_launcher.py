@@ -82,13 +82,26 @@ function Get-CimInstance { param($ClassName,$Filter) return @{CommandLine=$scrip
 $record=@{pid=1234;root=$root;profile=$profile;executable=$script:fake.Path;start_utc=$started.ToString('O')}
 function Save-Owner { $record|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $root 'logs\control-browser.json') -Encoding UTF8 }
 Save-Owner;$valid=[bool](Get-OwnedControlBrowser $root)
+function ConvertFrom-Json {
+ param([Parameter(ValueFromPipeline=$true)]$InputObject)
+ process {
+  $value=Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $InputObject
+  $value.start_utc=[DateTime]::Parse($value.start_utc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind)
+  return $value
+ }
+}
+$dateObject=[bool](Get-OwnedControlBrowser $root)
+Remove-Item Function:\ConvertFrom-Json
+$record.profile=Join-Path $root 'runtime\control-browser';$script:command='msedge.exe --user-data-dir="'+$record.profile+'"';Save-Owner
+$newValid=[bool](Get-OwnedControlBrowser $root)
+$record.profile=$profile;Save-Owner
 $script:command='msedge.exe --user-data-dir="C:\other-profile"';$profileMismatch=[bool](Get-OwnedControlBrowser $root)
 $script:command='msedge.exe --user-data-dir="'+$profile+'"';$record.start_utc=$started.AddSeconds(-1).ToString('O');Save-Owner
 $recycled=[bool](Get-OwnedControlBrowser $root)
 $record.start_utc=$started.ToString('O');$record.root='C:\other-install';Save-Owner;$otherRoot=[bool](Get-OwnedControlBrowser $root)
-@{valid=$valid;profileMismatch=$profileMismatch;recycled=$recycled;otherRoot=$otherRoot}|ConvertTo-Json -Compress
+@{valid=$valid;dateObject=$dateObject;newValid=$newValid;profileMismatch=$profileMismatch;recycled=$recycled;otherRoot=$otherRoot}|ConvertTo-Json -Compress
 ''',dict(MAA_SESSION_TEMP=folder))
-        self.assertEqual(data,dict(valid=True,profileMismatch=False,recycled=False,otherRoot=False))
+        self.assertEqual(data,dict(valid=True,dateObject=True,newValid=True,profileMismatch=False,recycled=False,otherRoot=False))
 
     def test_new_powershell_scripts_parse_without_running_emulator_commands(self):
         data=self.powershell(r'''
@@ -108,12 +121,13 @@ foreach($name in @('Control-Browser.ps1','Finish-Session.ps1','Start-MaaXuexi.ps
 $ErrorActionPreference='Stop'
 . (Join-Path $env:MAA_SESSION_ROOT 'scripts/Control-Browser.ps1')
 function Get-OwnedControlBrowser { param($Root) return $null }
+function Get-ControlBrowserProfile { param($Root) return (Join-Path $Root 'runtime\control-browser') }
 function Test-Path { param($LiteralPath) return $true }
 function Start-Process { param($FilePath,$ArgumentList,$WindowStyle) $global:captured=@($ArgumentList);$global:style=$WindowStyle }
 function Get-CimInstance { param($ClassName,$Filter) return @{ProcessId=1234;CommandLine=('msedge.exe '+($global:captured -join ' '))} }
 function Get-Process { param($Id,$ErrorAction) return @{Id=1234;MainWindowHandle=1;Path='C:\browser\msedge.exe';StartTime=[DateTime]::UtcNow} }
 Open-ControlBrowser $env:MAA_SESSION_TEMP
-@{arguments=@($global:captured);style=$global:style;profile=(Join-Path $env:MAA_SESSION_TEMP 'config\control-browser')}|ConvertTo-Json -Compress
+@{arguments=@($global:captured);style=$global:style;profile=(Join-Path $env:MAA_SESSION_TEMP 'runtime\control-browser')}|ConvertTo-Json -Compress
 ''',dict(MAA_SESSION_TEMP=folder))
         self.assertEqual(len(data['arguments']),7)
         self.assertEqual(data['arguments'][1],'--user-data-dir="'+data['profile']+'"')

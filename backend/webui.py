@@ -267,7 +267,8 @@ def local_diagnostics():
         raise HTTPException(409,'请在任务或历史导入结束后检查运行环境。')
     from runtime_doctor import diagnose
     return diagnose(Path.cwd(),health=status(),provider=provider_metadata(),schedule=read_schedule(),
-                    adb_command=getattr(app_state.worker,'_adb_command',None))
+                    adb_command=getattr(app_state.worker,'_adb_command',None),
+                    screen_metrics=getattr(app_state.worker,'_screen_capture_metrics',None))
 
 @app.get('/api/local/task-plan')
 def get_task_plan():

@@ -2,12 +2,13 @@
 import hashlib
 import importlib.metadata
 import json
+import math
 from pathlib import Path
 import subprocess
 from task_support import now,VERSION
 
 
-def diagnose(root,*,health=None,provider=None,schedule=None,adb_command=None):
+def diagnose(root,*,health=None,provider=None,schedule=None,adb_command=None,screen_metrics=None):
     root=Path(root).resolve();checks=[]
     def add(name,state,message):checks.append(dict(name=name,state=state,message=message))
     for label,relative in [('Python环境','.venv/Scripts/python.exe'),('启动入口','scripts/Start-MaaXuexi.ps1'),
@@ -46,6 +47,12 @@ def diagnose(root,*,health=None,provider=None,schedule=None,adb_command=None):
                 message=('已安装' if label=='学习强国' else value.stdout.strip().replace('\n','；')[:130]) if ok else '未确认，请检查模拟器'
                 add(label,'ok' if ok else 'warn',message)
             except (OSError,subprocess.SubprocessError):add(label,'warn','设备响应超时，未发送界面操作')
+    metrics=screen_metrics if isinstance(screen_metrics,dict) else {}
+    seconds=metrics.get('seconds')
+    if isinstance(seconds,(float,int)) and not isinstance(seconds,bool) and math.isfinite(seconds) and seconds>=0:
+        add('截图耗时','ok',f"最近一次 {seconds*1000:.0f} ms；采样时间 {metrics.get('sampled_at','未记录')}。仅含截图，不含OCR和模型答题。")
+    else:
+        add('截图耗时','warn','暂无截图样本；执行任务后再检查。自检不会启动模拟器或额外截图。')
     provider=provider or {}
     add('DeepSeek配置','ok' if provider.get('validated') else 'warn',
         '已配置，最近验证通过' if provider.get('validated') else '已配置，尚待验证' if provider.get('configured') else '未配置，可先执行基础任务')

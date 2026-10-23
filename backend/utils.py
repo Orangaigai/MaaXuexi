@@ -887,15 +887,37 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         command = getattr(self, "_adb_command", None)
         if not command:
             return False
-        try:
-            result = subprocess.run([*command, "shell", "dumpsys", "activity", "activities"],
-                                    capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                    timeout=8, check=True, creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
-        except (OSError, subprocess.SubprocessError):
-            self.connected = False
-            raise TaskIncomplete("模拟器设备连接已断开，请点击执行重新连接") from None
-        return any("cn.xuexi.android/" in line and re.search(r"(?:topResumedActivity|mResumedActivity)=", line)
-                   for line in result.stdout.splitlines())
+        for attempt in range(2):
+            self._check_active()
+            try:
+                result = subprocess.run([*command, "shell", "dumpsys", "activity", "activities"],
+                                        capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                        timeout=8, check=True, creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+            except (OSError, subprocess.SubprocessError) as error:
+                # A slow dumpsys does not prove that Android or ADB disconnected.
+                # Probe once before repeating this read-only query; never replay a tap/post.
+                try:
+                    state = subprocess.run([*command, "get-state"], capture_output=True, text=True,
+                                           encoding="utf-8", errors="replace", timeout=3,
+                                           creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+                except (OSError, subprocess.SubprocessError) as probe_error:
+                    raise TaskIncomplete("ADB前台查询和连接核查均未完成，已保留现场；查询错误："
+                                         +type(error).__name__+"；核查错误："+type(probe_error).__name__) from error
+                if state.returncode == 0 and state.stdout.strip() == "device":
+                    if attempt == 0:
+                        self.send_log("ADB仍在线，前台查询暂未完成（"+type(error).__name__+"）；仅补查一次")
+                        continue
+                    raise TaskIncomplete("ADB仍在线，但前台状态两次未确认，未发送点击；查询错误："
+                                         +type(error).__name__) from error
+                evidence = (state.stdout+" "+state.stderr).lower()
+                if (state.stdout.strip() in ("offline", "unauthorized", "unknown") or
+                        re.search(r"device.*(?:not found|offline|unauthorized)|no devices/emulators found", evidence)):
+                    self.connected = False
+                    raise TaskIncomplete("模拟器设备连接已断开或未授权，请检查MuMu后继续执行") from error
+                raise TaskIncomplete("暂时无法确认ADB连接，未将查询失败判为断线；查询错误："
+                                     +type(error).__name__) from error
+            return any("cn.xuexi.android/" in line and re.search(r"(?:topResumedActivity|mResumedActivity)=", line)
+                       for line in result.stdout.splitlines())
 
 
     @observed('每日答题：等待页面响应')

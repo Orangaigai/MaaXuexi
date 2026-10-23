@@ -3,7 +3,7 @@ import copy
 import time
 import numpy as np
 from maa.pipeline import JOCR
-from task_support import TaskIncomplete
+from task_support import TaskIncomplete, now
 from diagnostics import record_time
 
 
@@ -24,10 +24,14 @@ def read_screen(worker):
     """Capture afresh each call. Cache only byte-identical complete frames."""
     started=time.monotonic()
     image=worker.tasker.controller.post_screencap().wait().get()
-    record_time(worker,'截图',time.monotonic()-started)
+    capture_seconds=time.monotonic()-started
+    record_time(worker,'截图',capture_seconds)
     if not isinstance(image,np.ndarray) or image.ndim!=3 or image.shape[2]!=3 or not image.size:
         worker.connected=False
         raise TaskIncomplete('截图控制器未就绪或模拟器已断开，请重新执行以连接设备')
+    previous_metrics=getattr(worker,'_screen_capture_metrics',{})
+    worker._screen_capture_metrics=dict(seconds=round(capture_seconds,4),sampled_at=now(),
+                                        samples=previous_metrics.get('samples',0)+1)
     previous=getattr(worker,'_screen_ocr_cache',None)
     if previous and np.array_equal(previous[0],image):
         worker._last_screen_ocr_cached=True

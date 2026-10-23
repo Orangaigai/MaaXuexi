@@ -16,7 +16,7 @@ REQUIRED=['README.md','LICENSE','CONTRIBUTING.md','SECURITY.md','ACKNOWLEDGEMENT
 def public_path(relative):
     path=Path(relative)
     return (not path.is_absolute() and '..' not in path.parts
-        and not any(part in ('.venv','logs','debug','__pycache__','.git') for part in path.parts)
+        and not any(part in ('.venv','logs','runtime','debug','__pycache__','.git') for part in path.parts)
         and path.suffix.lower() not in ('.dpapi','.sqlite3','.log','.lnk','.pyc','.pem','.pfx','.p12')
         and (not relative.startswith('config/') or relative=='config/source-manifest.json'
              or relative.endswith('.example.json')))

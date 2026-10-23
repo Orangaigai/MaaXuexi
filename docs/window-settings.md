@@ -35,6 +35,10 @@ MuMu 本身首次冷启动可能短暂展示厂商窗口。脚本不再调用强
 
 显示与通知偏好保存在私有 `config/local-preferences.json`，缺失时使用默认值，更新源码不会覆盖。发布示例为 `config/local-preferences.example.json`。
 
+## 截图耗时自检
+
+设置 → 帮助与排查 → 运行环境自检，会显示最近一次成功截图的实际毫秒值及采样时间。该值只包括取图，不包括OCR或模型推理，也不代表所有题目的响应速度。尚未执行取图时显示“暂无截图样本”；自检不会额外取图或启动任务。
+
 ## 依据与实际验证
 
 设计参考 [scrcpy 窗口选项](https://github.com/Genymobile/scrcpy/blob/master/doc/window.md) 将置顶和普通显示区分开，使用 [Windows ShowWindow](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-showwindow) 的不激活显示方式及 [SetWindowPos](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos) 的不激活层级调整。没有调用 `SetForegroundWindow` 或模拟按键抢焦点。
