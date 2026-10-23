@@ -13,13 +13,16 @@ ROOT=Path(__file__).resolve().parents[1]
 @unittest.skipUnless(os.name=='nt','Windows installer integration')
 class PublicInstallTests(unittest.TestCase):
     def setup_copy(self):
-        temp=tempfile.TemporaryDirectory(prefix='maa install ');self.addCleanup(temp.cleanup)
+        temp=tempfile.TemporaryDirectory(prefix='maa install 中文 ');self.addCleanup(temp.cleanup)
         root=Path(temp.name);(root/'scripts').mkdir();(root/'config').mkdir()
-        shutil.copy2(ROOT/'scripts/Install-MaaXuexi.ps1',root/'scripts/Install-MaaXuexi.ps1')
+        for name in ('Install-MaaXuexi.ps1','Create-Shortcut.ps1','Launch-Hidden.py'):
+            shutil.copy2(ROOT/'scripts'/name,root/'scripts'/name)
+        (root/'page').mkdir();shutil.copy2(ROOT/'page/favicon.ico',root/'page/favicon.ico')
         for name in ('local-task-plan','comment-policy'):
             shutil.copy2(ROOT/f'config/{name}.example.json',root/f'config/{name}.example.json')
         # Existing env stub prevents bootstrapping or package/network activity.
         (root/'.venv/Scripts').mkdir(parents=True);(root/'.venv/Scripts/python.exe').write_bytes(b'not executed')
+        (root/'.venv/Scripts/pythonw.exe').write_bytes(b'not executed')
         mumu=root/'MuMu install/nx_main';mumu.mkdir(parents=True)
         for name in ('MuMuManager.exe','adb.exe'):(mumu/name).write_bytes(b'not executed')
         return root,mumu.parent
@@ -79,3 +82,41 @@ function Disable-ScheduledTask { throw 'MUST_NOT_DISABLE' }
         result=self.run_install(root,mumu,script,False)
         self.assertNotEqual(result.returncode,0);self.assertIn('Another installation owns',result.stdout)
         self.assertNotIn('MUST_NOT_',result.stdout+result.stderr)
+
+    def shortcut_command(self,root,command):
+        return subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',command],
+            env=dict(os.environ,MAA_SHORTCUT_ROOT=str(root)),capture_output=True,text=True,timeout=20,
+            creationflags=subprocess.CREATE_NO_WINDOW)
+
+    def test_installed_shortcut_uses_hidden_launcher_and_project_icon(self):
+        root,mumu=self.setup_copy()
+        result=self.run_install(root,mumu);self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        result=self.shortcut_command(root,r'''
+$link=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $env:MAA_SHORTCUT_ROOT 'MaaXuexi.lnk'))
+if($link.TargetPath -ne (Join-Path $env:MAA_SHORTCUT_ROOT '.venv\Scripts\pythonw.exe')){throw 'wrong target'}
+if($link.Arguments -ne ('"'+(Join-Path $env:MAA_SHORTCUT_ROOT 'scripts\Launch-Hidden.py')+'"')){throw 'wrong args'}
+if($link.IconLocation -ne ((Join-Path $env:MAA_SHORTCUT_ROOT 'page\favicon.ico')+',0')){throw 'wrong icon'}
+if($link.WorkingDirectory -ne $env:MAA_SHORTCUT_ROOT){throw 'wrong directory'}
+''')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        # A same-target reinstall updates in place without starting the stub executable.
+        result=self.run_install(root,mumu);self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+
+    def test_existing_unrelated_shortcut_is_not_overwritten(self):
+        root,mumu=self.setup_copy()
+        result=self.shortcut_command(root,r'''
+$link=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $env:MAA_SHORTCUT_ROOT 'MaaXuexi.lnk'))
+$link.TargetPath=Join-Path $env:SystemRoot 'notepad.exe'
+$link.Save()
+''')
+        self.assertEqual(result.returncode,0,result.stderr)
+        previous=(root/'MaaXuexi.lnk').read_bytes()
+        result=self.run_install(root,mumu)
+        self.assertNotEqual(result.returncode,0);self.assertIn('another target',result.stdout)
+        self.assertEqual((root/'MaaXuexi.lnk').read_bytes(),previous)
+
+    def test_missing_hidden_launcher_executable_does_not_create_a_broken_link(self):
+        root,mumu=self.setup_copy();(root/'.venv/Scripts/pythonw.exe').unlink()
+        result=self.run_install(root,mumu)
+        self.assertNotEqual(result.returncode,0);self.assertIn('Install the project first',result.stdout)
+        self.assertFalse((root/'MaaXuexi.lnk').exists())

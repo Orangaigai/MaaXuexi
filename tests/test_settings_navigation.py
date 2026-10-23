@@ -1,9 +1,11 @@
 """Page moves must retain valid control hooks and preserve original task APIs."""
 from html.parser import HTMLParser
+import io
 from pathlib import Path
 import re
 import unittest
 from fastapi.testclient import TestClient
+from PIL import Image
 from test_optimization import worker
 import webui
 
@@ -55,5 +57,17 @@ class SettingsNavigationTests(unittest.TestCase):
         self.assertNotIn('/assets/local-schedule.js?v=',console)
         self.assertIn('/assets/local-schedule.js?v=',settings)
         self.assertLess(console.index('/assets/schedule-view.js'),console.index('/assets/schedule-summary.js'))
+
+    def test_browser_icons_are_served_and_windows_icon_has_multiple_sizes(self):
+        client=TestClient(webui.app)
+        response=client.get('/favicon.ico')
+        self.assertEqual(response.status_code,200)
+        with Image.open(io.BytesIO(response.content)) as icon:
+            self.assertTrue({(16,16),(32,32),(48,48),(256,256)}.issubset(icon.ico.sizes()))
+        for url in ('/','/local/settings','/local/api-key'):
+            page=client.get(url).text
+            self.assertIn('href="/favicon.ico?v=',page)
+            self.assertIn('href="/assets/logo.svg?v=',page)
+        self.assertEqual(client.get('/assets/logo.svg').status_code,200)
 
 if __name__=='__main__':unittest.main()

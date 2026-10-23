@@ -1,3 +1,5 @@
+<img src="page/assets/logo.svg" width="64" height="64" alt="MaaXuexi logo">
+
 # MaaXuexi
 
 基于 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 和 [上游 MaaXuexi](https://github.com/ravizhan/MaaXuexi) 的 Windows 本地任务控制台。通过 MuMu 模拟器操作学习强国，在浏览器里选择并排序任务、查看实际积分、暂停或继续，并设置每日启动时间。

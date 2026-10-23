@@ -16,7 +16,7 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, SecretStr, ConfigDict, field_validator, StrictBool
 
@@ -179,6 +179,10 @@ async def lifespan(app):
 
 app = FastAPI(lifespan=lifespan)
 app.mount('/assets', StaticFiles(directory='page/assets'))
+
+@app.get('/favicon.ico', include_in_schema=False)
+def favicon():
+    return FileResponse('page/favicon.ico', media_type='image/vnd.microsoft.icon', headers={'Cache-Control':'no-cache'})
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, error):

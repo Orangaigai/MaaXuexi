@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>设置 · MaaXuexi</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=local-20261023.4">
+  <link rel="icon" type="image/svg+xml" sizes="any" href="/assets/logo.svg?v=local-20261023.4">
   <link rel="stylesheet" href="/assets/ui-base.css">
   <link rel="stylesheet" href="/assets/console.css">
   <link rel="stylesheet" href="/assets/settings.css">
@@ -63,9 +65,8 @@
             <label class="window-option"><input type="radio" name="windowMode" value="normal" disabled><span><strong>正常窗口</strong><small>由你切换前后，不主动弹到前台。</small></span></label>
             <label class="window-option"><input type="radio" name="windowMode" value="topmost" disabled><span><strong>始终置顶</strong><small>保持在其他窗口上方，方便观察执行。</small></span></label>
           </fieldset>
-          <label class="setting-switch attention-setting"><span><strong>需要本人处理时显示一次</strong><small>验证或登录时显示模拟器；点击其他窗口即可盖住，不反复抢前台。</small></span><input id="showOnAttention" type="checkbox" role="switch" checked disabled></label>
-          <p class="settings-note">本人验证仍需你完成。验证通过后自动恢复所选显示方式。</p>
-          <label class="setting-switch"><span><strong>定时执行时打开控制台</strong><small>关闭时安静启动；需要查看进度时，再打开项目启动入口。</small></span><input id="openConsoleOnSchedule" type="checkbox" role="switch" disabled></label>
+          <label class="setting-switch attention-setting"><span><strong>需要本人处理时显示一次</strong><small id="attentionHint">验证或登录时显示模拟器，点击其他窗口即可盖住。<br>本人处理完成后，自动恢复所选显示方式。</small></span><input id="showOnAttention" type="checkbox" role="switch" aria-describedby="attentionHint" checked disabled></label>
+          <label class="setting-switch"><span><strong>定时启动时打开进度网页</strong><small id="consoleOpenHint">关闭后不弹出网页，任务照常执行；需要时可从启动入口查看进度。</small></span><input id="openConsoleOnSchedule" type="checkbox" role="switch" aria-describedby="consoleOpenHint" disabled></label>
         </section>
         <section class="settings-divider" aria-labelledby="notificationHeading">
           <h2 id="notificationHeading">消息通知</h2>

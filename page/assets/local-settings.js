@@ -3,11 +3,54 @@
   const $=id=>document.getElementById(id),form=$('preferencesForm');
   let saved=null,pending=false,health=null,loaded=false,closing=false,diagnosing=false,scheduleEdited=false,scheduleBusy=false;
   const navLinks=[...document.querySelectorAll('.settings-nav a')];
+  const sections=navLinks.map(link=>({link,target:document.getElementById(link.hash.slice(1))})).filter(item=>item.target);
+  let clickedSection=sections.find(item=>item.link.hash===location.hash),navigating=Boolean(clickedSection),navFrame=0,scrollTimer,lastScrollY=scrollY;
   function selectSection(){
-    const current=[...navLinks].reverse().find(link=>document.querySelector(link.hash).getBoundingClientRect().top<=130)||navLinks[0];
-    navLinks.forEach(link=>{if(link===current)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');});
+    navFrame=0;
+    const maximum=Math.max(0,document.documentElement.scrollHeight-innerHeight);
+    const step=Math.min(72,maximum/Math.max(1,sections.length-1));
+    // Short final sections share a clamped anchor position. Reserve a small
+    // scroll interval for each, so ordinary scrolling can activate all of them.
+    let limit=maximum;
+    const stops=sections.map(item=>Math.max(0,scrollY+item.target.getBoundingClientRect().top-Math.min(130,innerHeight/4)));
+    for(let index=stops.length-1;index>=0;index--){stops[index]=Math.max(0,Math.min(stops[index],limit));limit=stops[index]-step;}
+    const current=clickedSection||sections.findLast((item,index)=>scrollY>=stops[index]-1)||sections[0];
+    navLinks.forEach(link=>{if(link===current?.link)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');});
   }
-  window.addEventListener('scroll',selectSection,{passive:true});selectSection();
+  const refreshSection=()=>{if(!navFrame)navFrame=requestAnimationFrame(selectSection);};
+  function releaseSection(){clickedSection=null;navigating=false;refreshSection();}
+  function goToSection(item){
+    clickedSection=item;
+    const top=scrollY+item.target.getBoundingClientRect().top-parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop||0);
+    const destination=Math.max(0,Math.min(top,document.documentElement.scrollHeight-innerHeight));
+    navigating=Math.abs(scrollY-destination)>2;
+    item.target.scrollIntoView({block:'start'});
+    selectSection();
+  }
+  navLinks.forEach(link=>link.addEventListener('click',event=>{
+    if(event.button||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey)return;
+    const item=sections.find(item=>item.link===link);if(!item)return;
+    event.preventDefault();
+    if(location.hash!==link.hash)history.pushState(null,'',link.hash);
+    goToSection(item);
+  }));
+  window.addEventListener('scroll',()=>{
+    if(!navigating&&Math.abs(scrollY-lastScrollY)>1)clickedSection=null;
+    lastScrollY=scrollY;
+    refreshSection();
+    // Older browsers without scrollend still release smooth-scroll ownership.
+    if(!('onscrollend' in document)){clearTimeout(scrollTimer);scrollTimer=setTimeout(()=>{navigating=false;},150);}
+  },{passive:true});
+  document.addEventListener('scrollend',()=>{navigating=false;});
+  for(const type of ['wheel','touchmove'])window.addEventListener(type,releaseSection,{passive:true});
+  window.addEventListener('keydown',event=>{
+    if(['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key)&&!event.target.closest('input,textarea,select,button,[contenteditable="true"]'))releaseSection();
+  });
+  window.addEventListener('resize',releaseSection);
+  window.addEventListener('hashchange',()=>{const item=sections.find(item=>item.link.hash===location.hash);if(item)goToSection(item);else releaseSection();});
+  window.addEventListener('load',()=>{const item=sections.find(item=>item.link.hash===location.hash);if(item)goToSection(item);});
+  new ResizeObserver(refreshSection).observe(document.querySelector('.settings-content'));
+  selectSection();
   const fields=()=>({window_mode:form.querySelector('[name=windowMode]:checked').value,
     show_on_attention:$('showOnAttention').checked,notifications:$('desktopNotifications').checked,
     open_console_on_schedule:$('openConsoleOnSchedule').checked});

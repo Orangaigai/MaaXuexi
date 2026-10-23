@@ -36,10 +36,11 @@ D:\Apps\MuMuPlayer
 1. 建立项目自己的 `.venv`，安装锁定的 Python 依赖。
 2. 只在文件不存在时创建模拟器配置、基础任务清单、关闭的观点规则与初始时间配置。
 3. 注册属于本安装目录的 Windows 计划任务，**首次保持关闭**。需要时在控制台启用。
+4. 在项目根目录创建带项目图标的 **MaaXuexi.lnk**，使用现有无终端启动器；不自动向桌面添加文件。
 
 安装不启动学习、不连接 DeepSeek、不自动登录，也不覆盖已有密钥、任务或计划。已有同目录计划会保留其启用状态与时间。
 
-看到 `Installation complete` 后，双击 **启动MaaXuexi.cmd**。启动会准备模拟器和浏览器；在网页点击“立即执行”才开始手动任务。第一次建议先用基础任务。
+看到 `Installation complete` 后，双击蓝色图标的 **MaaXuexi.lnk**（也可使用 **启动MaaXuexi.cmd**）。启动会准备模拟器和浏览器；在网页点击“立即执行”才开始手动任务。第一次建议先用基础任务。
 
 ## 用命令安装
 
@@ -58,6 +59,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-MaaXue
 `-VmIndex` 是 MuMu 实例编号，默认 `0`。脚本按本机路径生成 `config/emulator.json`；可参考[配置说明](configuration.md#模拟器)。
 
 `-SkipSchedule` 仅用于不注册计划任务的开发/隔离安装；`-SkipDependencies` 仅用于依赖已安装后的本地检查。跳过计划注册时，不把控制台定时功能记为已配置。
+
+## 启动快捷方式与图标
+
+安装时会在项目根目录生成 **MaaXuexi.lnk**，可以复制到桌面使用。它指向本安装目录的 `pythonw.exe` 和原有启动器，不弹出启动终端，也不改变执行、定时或窗口偏好。
+
+移动安装目录后，请在新目录重新生成快捷方式：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Create-Shortcut.ps1
+```
+
+已有同目标快捷方式可更新图标；同名快捷方式若指向其他目标则保留并报错。源码中的 [SVG 原稿](../page/assets/logo.svg)、[512 像素 PNG](../page/assets/logo.png) 与 [Windows 多尺寸 ICO](../page/favicon.ico) 使用同一设计。`.cmd` 文件保留系统文件图标，启动请使用带蓝色项目图标的快捷方式。
 
 ## 更新与迁移
 

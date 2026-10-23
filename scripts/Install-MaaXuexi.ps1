@@ -82,6 +82,7 @@ try {
             Write-Host 'Schedule registered disabled. Enable it in the console when ready.'
         }
     }
+    & (Join-Path $PSScriptRoot 'Create-Shortcut.ps1')
     Write-Host 'Installation complete. Existing settings and keys were preserved.'
     Write-Host 'Open the Start command file, then use http://127.0.0.1:8000/ .'
     Write-Host 'No learning task or paid API request was started.'
