@@ -15,7 +15,7 @@ class PublicInstallTests(unittest.TestCase):
     def setup_copy(self):
         temp=tempfile.TemporaryDirectory(prefix='maa install 中文 ');self.addCleanup(temp.cleanup)
         root=Path(temp.name);(root/'scripts').mkdir();(root/'config').mkdir()
-        for name in ('Install-MaaXuexi.ps1','Create-Shortcut.ps1','Launch-Hidden.py'):
+        for name in ('Install-MaaXuexi.ps1','Create-Shortcut.ps1','ShellLink.cs','Launch-Hidden.py'):
             shutil.copy2(ROOT/'scripts'/name,root/'scripts'/name)
         (root/'page').mkdir();shutil.copy2(ROOT/'page/favicon.ico',root/'page/favicon.ico')
         for name in ('local-task-plan','comment-policy'):
@@ -84,7 +84,8 @@ function Disable-ScheduledTask { throw 'MUST_NOT_DISABLE' }
         self.assertNotIn('MUST_NOT_',result.stdout+result.stderr)
 
     def shortcut_command(self,root,command):
-        return subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',command],
+        prefix="Add-Type -Path (Join-Path $env:MAA_SHORTCUT_ROOT 'scripts/ShellLink.cs')\n"
+        return subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',prefix+command],
             env=dict(os.environ,MAA_SHORTCUT_ROOT=str(root)),capture_output=True,text=True,timeout=20,
             creationflags=subprocess.CREATE_NO_WINDOW)
 
@@ -92,11 +93,11 @@ function Disable-ScheduledTask { throw 'MUST_NOT_DISABLE' }
         root,mumu=self.setup_copy()
         result=self.run_install(root,mumu);self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         result=self.shortcut_command(root,r'''
-$link=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $env:MAA_SHORTCUT_ROOT 'MaaXuexi.lnk'))
-if($link.TargetPath -ne (Join-Path $env:MAA_SHORTCUT_ROOT '.venv\Scripts\pythonw.exe')){throw 'wrong target'}
-if($link.Arguments -ne ('"'+(Join-Path $env:MAA_SHORTCUT_ROOT 'scripts\Launch-Hidden.py')+'"')){throw 'wrong args'}
-if($link.IconLocation -ne ((Join-Path $env:MAA_SHORTCUT_ROOT 'page\favicon.ico')+',0')){throw 'wrong icon'}
-if($link.WorkingDirectory -ne $env:MAA_SHORTCUT_ROOT){throw 'wrong directory'}
+$link=[MaaXuexiShellLink]::Read((Join-Path $env:MAA_SHORTCUT_ROOT 'MaaXuexi.lnk'))
+if($link[0] -ne (Join-Path $env:MAA_SHORTCUT_ROOT '.venv\Scripts\pythonw.exe')){throw 'wrong target'}
+if($link[1] -ne ('"'+(Join-Path $env:MAA_SHORTCUT_ROOT 'scripts\Launch-Hidden.py')+'"')){throw 'wrong args'}
+if($link[3] -ne ((Join-Path $env:MAA_SHORTCUT_ROOT 'page\favicon.ico')+',0')){throw 'wrong icon'}
+if($link[2] -ne $env:MAA_SHORTCUT_ROOT){throw 'wrong directory'}
 ''')
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         # A same-target reinstall updates in place without starting the stub executable.
@@ -105,9 +106,7 @@ if($link.WorkingDirectory -ne $env:MAA_SHORTCUT_ROOT){throw 'wrong directory'}
     def test_existing_unrelated_shortcut_is_not_overwritten(self):
         root,mumu=self.setup_copy()
         result=self.shortcut_command(root,r'''
-$link=(New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $env:MAA_SHORTCUT_ROOT 'MaaXuexi.lnk'))
-$link.TargetPath=Join-Path $env:SystemRoot 'notepad.exe'
-$link.Save()
+[MaaXuexiShellLink]::Write((Join-Path $env:MAA_SHORTCUT_ROOT 'MaaXuexi.lnk'),(Join-Path $env:SystemRoot 'notepad.exe'),'',$env:MAA_SHORTCUT_ROOT,(Join-Path $env:MAA_SHORTCUT_ROOT 'page/favicon.ico'))
 ''')
         self.assertEqual(result.returncode,0,result.stderr)
         previous=(root/'MaaXuexi.lnk').read_bytes()

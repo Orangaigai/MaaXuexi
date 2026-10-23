@@ -11,15 +11,12 @@ foreach ($file in @($target, $launcher, $icon)) {
     if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw ('Install the project first. Missing: ' + $file) }
 }
 $arguments = '"' + $launcher + '"'
-$shellObject = New-Object -ComObject WScript.Shell
-$shortcut = $shellObject.CreateShortcut($ShortcutPath)
-if ((Test-Path -LiteralPath $ShortcutPath) -and ($shortcut.TargetPath -ne $target -or $shortcut.Arguments -ne $arguments)) {
-    throw 'This shortcut belongs to another target. It was not changed.'
+if (!('MaaXuexiShellLink' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'ShellLink.cs') }
+if (Test-Path -LiteralPath $ShortcutPath) {
+    $existing = [MaaXuexiShellLink]::Read($ShortcutPath)
+    if ($existing[0] -ne $target -or $existing[1] -ne $arguments) {
+        throw 'This shortcut belongs to another target. It was not changed.'
+    }
 }
-$shortcut.TargetPath = $target
-$shortcut.Arguments = $arguments
-$shortcut.WorkingDirectory = $appRoot
-$shortcut.IconLocation = $icon + ',0'
-$shortcut.Description = 'MaaXuexi task console'
-$shortcut.Save()
+[MaaXuexiShellLink]::Write($ShortcutPath, $target, $arguments, $appRoot, $icon)
 Write-Host ('Shortcut ready: ' + $ShortcutPath)
