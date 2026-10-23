@@ -519,6 +519,34 @@ class CommentTasks:
         records += self._comment_ocr('观点发布按钮', [600, 1200, 100, 70])
         return comment_draft_ready(records, expected_text)
 
+    def _comment_settle_submission(self, expected_text, expected_title):
+        started=time.monotonic()
+        initial_paused=getattr(self,'_paused_seconds',0)
+        stable=0
+        receipt={'own_comment_visible':False,'page_stable':False}
+        def ready(records):
+            nonlocal stable
+            if comment_posted(records,expected_text):
+                receipt['own_comment_visible']=True
+                return True
+            if any(row['text'].strip()=='发布' and row['box'][0]>=600
+                   and row['box'][1]>=1200 for row in records):
+                stable=0
+                return False
+            article=comment_article(records,require_body=False,image=self.tasker.controller.cached_image)
+            ordinary=(article is not None and article_title_key(article['title'])==article_title_key(expected_title))
+            ordinary=ordinary or home_ready(records) or self._comment_native_life_page(records)
+            stable=stable+1 if ordinary else 0
+            elapsed=time.monotonic()-started-max(0,getattr(self,'_paused_seconds',0)-initial_paused)
+            receipt['page_stable']=stable>=2 and elapsed>=4
+            return receipt['page_stable']
+        # Keep observing the same request so an asynchronous CAPTCHA can appear.
+        # No extra Publish input; verification stays in the existing owner guard.
+        self._comment_wait(ready,timeout=20)
+        report=getattr(self,'run_report',None)
+        if report is not None:
+            report.task('发表观点',submission_observation=receipt)
+
     def _comment_restore_home(self):
         self._guard_verification(resume_when=self._comment_resume_ready)
         records = self._screen_records()
@@ -567,7 +595,9 @@ class CommentTasks:
         self._comment_click(button)
         self.send_log('观点：已点击发布，等待编辑框响应与平台验证；是否加分以核分为准')
         self._comment_wait(lambda _: self._comment_publish_target(draft['comment']) is None)
-        self.send_log('观点：编辑框已关闭，自动恢复首页并核分')
+        self.send_log('观点：编辑框已关闭，继续观察平台响应和可能出现的验证，不立即重开应用')
+        self._comment_settle_submission(draft['comment'],article['title'])
+        self.send_log('观点：已观察提交后页面，恢复首页并核分')
         self._comment_restore_home()
         self._score_refresh_required = True
         after = self.read_learning_score(['发表观点'])['发表观点']

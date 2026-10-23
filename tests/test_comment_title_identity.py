@@ -3,7 +3,7 @@ import copy
 import json
 from pathlib import Path
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import numpy as np
 from PIL import Image
 from comment_reading import title_line_text
@@ -90,6 +90,33 @@ class ArticleTitleIdentityTests(unittest.TestCase):
         self.assertIn('正文介绍',result['body']);self.assertNotIn('责任编辑',result['body']);self.assertNotIn('视频字幕',result['body'])
         value.tasker.controller.post_swipe.assert_called_once()
         value._comment_article_top.assert_called_once()
+
+    def test_editor_closure_alone_does_not_immediately_leave_the_article(self):
+        value=worker();value.tasker.controller.cached_image=self.image
+        times=iter([0.,.5,2.,4.1]);answers=[]
+        def observe(predicate,**kwargs):
+            for _ in range(3):answers.append(predicate(self.rows['after']))
+        value._comment_wait=Mock(side_effect=observe)
+        article=comment_article(self.rows['after'],require_body=False,image=self.image)
+        with patch('comment_tasks.time.monotonic',side_effect=lambda:next(times)):
+            value._comment_settle_submission('认真读完文章以后更清楚了。',article['title'])
+        self.assertEqual(answers,[False,False,True]);value.tasker.controller.post_click.assert_not_called()
+
+    def test_delayed_owner_verification_propagates_without_a_second_publish(self):
+        from task_support import HumanRequired
+        value=worker();value.tasker.controller.cached_image=self.image
+        value._comment_wait=Mock(side_effect=HumanRequired('真实验证仍待本人处理'))
+        with self.assertRaises(HumanRequired):value._comment_settle_submission('认真读完文章以后更清楚了。','文章标题')
+        value.tasker.controller.post_click.assert_not_called();value.tasker.controller.post_start_app.assert_not_called()
+
+    def test_unknown_post_submission_page_is_not_accepted(self):
+        value=worker();value.tasker.controller.cached_image=self.image
+        value._comment_native_life_page=Mock(return_value=False)
+        def observe(predicate,**kwargs):
+            self.assertFalse(predicate([]));raise TaskIncomplete('页面未知，保留现场')
+        value._comment_wait=Mock(side_effect=observe)
+        with self.assertRaises(TaskIncomplete):value._comment_settle_submission('认真读完文章以后更清楚了。','文章标题')
+        value.tasker.controller.post_click.assert_not_called();value.tasker.controller.post_start_app.assert_not_called()
 
     def test_a_different_chinese_word_still_stops_before_reading_or_input(self):
         before=self.rows['before'];changed=copy.deepcopy(before)
