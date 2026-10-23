@@ -7,6 +7,18 @@ using System.Text;
 
 public static class MaaXuexiShellLink
 {
+    // Shell links expand 8.3 aliases (such as RUNNER~1). Use the same spelling
+    // for target, arguments and ownership comparisons when updating a link.
+    public static string CanonicalPath(string path)
+    {
+        var buffer = new StringBuilder(32768);
+        uint length = GetLongPathName(path, buffer, (uint)buffer.Capacity);
+        return length > 0 && length < buffer.Capacity ? buffer.ToString() : System.IO.Path.GetFullPath(path);
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "GetLongPathNameW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern uint GetLongPathName(string path, StringBuilder value, uint size);
+
     [ComImport, Guid("00021401-0000-0000-C000-000000000046")]
     private class ShellLink { }
 

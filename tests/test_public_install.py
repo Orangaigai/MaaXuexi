@@ -94,13 +94,20 @@ function Disable-ScheduledTask { throw 'MUST_NOT_DISABLE' }
         result=self.run_install(root,mumu);self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         result=self.shortcut_command(root,r'''
 $link=[MaaXuexiShellLink]::Read((Join-Path $env:MAA_SHORTCUT_ROOT 'MaaXuexi.lnk'))
-if($link[0] -ne (Join-Path $env:MAA_SHORTCUT_ROOT '.venv\Scripts\pythonw.exe')){throw 'wrong target'}
-if($link[1] -ne ('"'+(Join-Path $env:MAA_SHORTCUT_ROOT 'scripts\Launch-Hidden.py')+'"')){throw 'wrong args'}
-if($link[3] -ne ((Join-Path $env:MAA_SHORTCUT_ROOT 'page\favicon.ico')+',0')){throw 'wrong icon'}
-if($link[2] -ne $env:MAA_SHORTCUT_ROOT){throw 'wrong directory'}
+$canonical=[MaaXuexiShellLink]::CanonicalPath($env:MAA_SHORTCUT_ROOT)
+$expected=Join-Path $canonical '.venv\Scripts\pythonw.exe'
+if($link[0] -ne $expected){throw ('wrong target: '+$link[0]+' expected: '+$expected)}
+if($link[1] -ne ('"'+(Join-Path $canonical 'scripts\Launch-Hidden.py')+'"')){throw ('wrong args: '+$link[1])}
+if($link[3] -ne ((Join-Path $canonical 'page\favicon.ico')+',0')){throw ('wrong icon: '+$link[3])}
+if($link[2] -ne $canonical){throw ('wrong directory: '+$link[2])}
 ''')
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         # A same-target reinstall updates in place without starting the stub executable.
+        # Also accept an older link whose quoted launcher uses the Temp 8.3 alias.
+        result=self.shortcut_command(root,r'''
+[MaaXuexiShellLink]::Write((Join-Path $env:MAA_SHORTCUT_ROOT 'MaaXuexi.lnk'),(Join-Path $env:MAA_SHORTCUT_ROOT '.venv/Scripts/pythonw.exe'),('"'+(Join-Path $env:MAA_SHORTCUT_ROOT 'scripts\Launch-Hidden.py')+'"'),$env:MAA_SHORTCUT_ROOT,(Join-Path $env:MAA_SHORTCUT_ROOT 'page/favicon.ico'))
+''')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         result=self.run_install(root,mumu);self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
     def test_existing_unrelated_shortcut_is_not_overwritten(self):

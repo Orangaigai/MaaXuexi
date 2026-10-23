@@ -1,6 +1,8 @@
 param([string]$ShortcutPath)
 $ErrorActionPreference = 'Stop'
 $appRoot = Split-Path -Parent $PSScriptRoot
+if (!('MaaXuexiShellLink' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'ShellLink.cs') }
+$appRoot = [MaaXuexiShellLink]::CanonicalPath($appRoot)
 if (!$ShortcutPath) { $ShortcutPath = Join-Path $appRoot 'MaaXuexi.lnk' }
 $ShortcutPath = [IO.Path]::GetFullPath($ShortcutPath)
 if ([IO.Path]::GetExtension($ShortcutPath) -ne '.lnk') { throw 'ShortcutPath must end in .lnk.' }
@@ -11,10 +13,10 @@ foreach ($file in @($target, $launcher, $icon)) {
     if (!(Test-Path -LiteralPath $file -PathType Leaf)) { throw ('Install the project first. Missing: ' + $file) }
 }
 $arguments = '"' + $launcher + '"'
-if (!('MaaXuexiShellLink' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'ShellLink.cs') }
 if (Test-Path -LiteralPath $ShortcutPath) {
     $existing = [MaaXuexiShellLink]::Read($ShortcutPath)
-    if ($existing[0] -ne $target -or $existing[1] -ne $arguments) {
+    $existingLauncher = if ($existing[1] -match '^"([^"]+)"$') { [MaaXuexiShellLink]::CanonicalPath($Matches[1]) } else { '' }
+    if ([MaaXuexiShellLink]::CanonicalPath($existing[0]) -ne $target -or $existingLauncher -ne $launcher) {
         throw 'This shortcut belongs to another target. It was not changed.'
     }
 }
