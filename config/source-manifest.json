@@ -149,7 +149,7 @@
   "tests/fixtures/click-six.png": "b07b6b7224bd47efdf611d82f74eee2a092180734ebc6af08c6806457ebcd2f7",
   "tests/fixtures/click-two.png": "f476264093b74f9be67d4e15d7122b485d407227ab91b498b7184d6d7059ae52",
   "tests/fixtures/comment-title-dash-fallback.png": "14ba194b04f9b4a8f7c06d7e853636d73ef8880f5f1f018f80482f2cefd21040",
-  "tests/fixtures/comment-title-dash.json": "0dac6b1b0a2ab3c719da94157381585a7a02ec7d8815910b1c0506d1e48d8bff",
+  "tests/fixtures/comment-title-dash.json": "dd2cfed6bf7d2072f369ad5d594841e9d9197a3a1b90d1b69b3ca6b2d0a20da0",
   "tests/fixtures/comment-title-dash.png": "32acbe364163860e8abfc6315ee76546abd68e952cf952b4b5f6017b2e6bebbb",
   "tests/fixtures/comments/article-late.json": "60267756558b4b408c21e27879ac15661d8457a1c680a74d5de076aab47d257d",
   "tests/fixtures/comments/article.json": "f8c452ad0bf75ae54cb673d266e5a1f87646850b7398d5b599cfa4e091221e0f",
