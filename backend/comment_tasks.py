@@ -427,7 +427,7 @@ class CommentTasks:
                     raise TaskIncomplete('全文阅读开始前文章标题未一致，未继续翻动；预期：'+article['title']+
                                          '；当前：'+(current_article['title'] if current_article else '尚未识别'))
             self._comment_article_bar()
-            current, end = article_page(records, first=page == 0)
+            current, end = article_page(records, first=page == 0, body_closed=body_closed)
             if not body_closed:
                 lines = append_page(lines, current, prior)
             body_closed = body_closed or editor_footer(records)

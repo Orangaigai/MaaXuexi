@@ -3,13 +3,19 @@ import re
 import numpy as np
 
 
-def article_page(records, *, first=False):
+def article_page(records, *, first=False, body_closed=False):
     rows = sorted(records, key=lambda row:(row['box'][1], row['box'][0]))
     reads = [r for r in rows if re.fullmatch(r'阅读\s*[\d,，]+', r['text'].strip())]
     likes = [r for r in rows if re.fullmatch(r'点赞\s*[\d,，]+', r['text'].strip())]
     end = any(abs(read['box'][1]-like['box'][1]) < 45 for read in reads for like in likes)
     footers = [r['box'][1] for r in rows if re.match(r'^(?:作者|审核|责任编辑|责编)\s*[:：]', r['text'].strip())]
-    bottom = min(footers + [r['box'][1] for r in reads+likes]) if (footers or end) else 1190
+    credits=[r['box'][1] for r in rows if re.match(r'^(?:责任编辑|责编|审核)\s*[:：]',r['text'].strip())]
+    comments=[r['box'][1] for r in rows if r['text'].strip()=='观点'
+              and r['box'][0]<100 and 120<r['box'][1]<1190
+              and (body_closed or (credits and r['box'][1]>min(credits)+35))]
+    end=end or bool(comments)
+    boundaries=footers+[r['box'][1] for r in reads+likes]+comments
+    bottom=min(boundaries) if boundaries else 1190
     sources = [r for r in rows if re.match(r'^来源\s*[:：]', r['text'].strip())]
     top = max((r['box'][1]+r['box'][3] for r in sources), default=120) if first else 120
     lines = [r['text'].strip() for r in rows if top < r['box'][1] < bottom

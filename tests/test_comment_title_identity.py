@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import Mock, patch
 import numpy as np
 from PIL import Image
-from comment_reading import title_line_text
+from comment_reading import title_line_text, article_page
 from comment_tasks import comment_article, article_title_key
 from task_support import TaskIncomplete
 from test_optimization import worker
@@ -117,6 +117,22 @@ class ArticleTitleIdentityTests(unittest.TestCase):
         value._comment_wait=Mock(side_effect=observe)
         with self.assertRaises(TaskIncomplete):value._comment_settle_submission('认真读完文章以后更清楚了。','文章标题')
         value.tasker.controller.post_click.assert_not_called();value.tasker.controller.post_start_app.assert_not_called()
+
+    def test_editor_credit_then_comments_confirms_end_when_stats_label_ocr_misses(self):
+        rows=[dict(text='正文知识已经读到最后。',box=[25,220,600,30]),
+              dict(text='责任编辑：测试',box=[25,600,300,25]),
+              dict(text='观点',box=[45,830,70,35]),dict(text='暂无观点 快来发表观点',box=[200,1100,300,25])]
+        lines,end=article_page(rows)
+        self.assertTrue(end);self.assertEqual(lines,['正文知识已经读到最后。'])
+
+    def test_comments_on_a_later_page_need_a_previously_confirmed_editor_credit(self):
+        rows=[dict(text='观点',box=[45,830,70,35])]
+        self.assertFalse(article_page(rows)[1]);self.assertTrue(article_page(rows,body_closed=True)[1])
+
+    def test_body_mention_of_opinions_does_not_become_an_end_marker(self):
+        rows=[dict(text='责任编辑：测试',box=[25,600,300,25]),dict(text='个人观点',box=[45,830,200,35])]
+        self.assertFalse(article_page(rows)[1])
+        self.assertFalse(article_page([dict(text='观点',box=[45,400,70,35])]+rows)[1])
 
     def test_a_different_chinese_word_still_stops_before_reading_or_input(self):
         before=self.rows['before'];changed=copy.deepcopy(before)
