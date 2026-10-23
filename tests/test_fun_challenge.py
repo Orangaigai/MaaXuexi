@@ -9,10 +9,11 @@ import json
 import httpx
 import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'backend'))
-from fun_challenge import correct_count, options_from_records, fingerprint, question_text, challenge_target, challenge_length
+from fun_challenge import correct_count, options_from_records, fingerprint, question_text, challenge_target, challenge_length, single_player_timer_boxes
 from task_support import TaskIncomplete, TaskUnavailable, TaskSkipped
 from test_optimization import worker, job
 from answer_client import AIResolver
+from question_visual import visual_identity
 import webui
 
 
@@ -54,6 +55,40 @@ class FunChallengeTests(unittest.TestCase):
         self.assertEqual(value.ai_resolver.resolve_fun_choice.call_count,11)
         self.assertEqual(value._fun_metrics['ending_answers_clicked'],1)
         value._exit_fun_challenge.assert_called_once()
+
+    def test_real_unchanged_question_is_answered_when_only_clock_pixels_change(self):
+        fixture=Path(__file__).parent/'fixtures/fun-clock/ocr.json'
+        evidence=json.loads(fixture.read_text('utf-8'))
+        value=self.make_worker()
+        before=np.full((1280,720,3),255,np.uint8);before[155:205,320:400]=40
+        after=before.copy();after[155:205,320:400]=39
+        ended=[dict(text='挑战结束',box=[200,600,300,60]),dict(text='本次答对0题',box=[200,730,260,40])]
+        frames=iter([(evidence['before'],before),(evidence['after'],after),(ended,after)])
+        def screen():
+            rows,image=next(frames);value.tasker.controller.cached_image=image;return rows
+        value._fun_records=Mock(side_effect=screen)
+        value._fun_options=Mock(side_effect=lambda rows:[] if rows is ended else evidence['before_options'])
+        with patch('fun_challenge.visual_evidence',return_value=(True,[55,150,665,826])):
+            value.funny_answer()
+        self.assertEqual(value._fun_metrics['questions_clicked'],1)
+        self.assertNotIn('stale_answers_discarded',value._fun_metrics)
+        value.ai_resolver.resolve_fun_choice.assert_called_once()
+        value.tasker.controller.post_click.assert_called_once()
+
+    def test_clock_comparison_keeps_real_image_changes_and_does_not_modify_input(self):
+        image=np.full((1280,720,3),255,np.uint8);area=[55,150,665,826]
+        records=[dict(text='40',box=[328,155,63,46])]
+        ignored=single_player_timer_boxes(records)
+        clock=image.copy();clock[155:205,320:400]=39
+        self.assertNotEqual(visual_identity(image,area),visual_identity(clock,area))
+        self.assertEqual(visual_identity(image,area,ignored),visual_identity(clock,area,ignored))
+        picture=clock.copy();picture[300:360,200:260]=0
+        self.assertNotEqual(visual_identity(image,area,ignored),visual_identity(picture,area,ignored))
+        self.assertTrue(np.array_equal(image,np.full_like(image,255)))
+
+    def test_numbers_inside_the_question_are_never_masked_as_a_clock(self):
+        self.assertFalse(single_player_timer_boxes([dict(text='40',box=[328,350,63,46])]))
+        self.assertFalse(single_player_timer_boxes([dict(text='已答对3题',box=[328,155,180,46])]))
 
     def test_stale_model_answer_is_not_clicked(self):
         value = self.make_worker()

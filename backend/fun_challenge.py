@@ -134,6 +134,18 @@ def challenge_length(minimum):
     return choices(counts,weights=[34 if count<=9 else 7 for count in counts],k=1)[0]
 
 
+def single_player_timer_boxes(records):
+    """The single-player clock is above the question, whose text starts at 240.
+
+    Mask only this established UI panel in image comparison, never model input.
+    """
+    for row in records:
+        x,y,w,h=row['box']
+        if re.fullmatch(r'\d{1,2}',row['text'].strip()) and 280<=x<=420 and 140<=y<220 and 15<=w<=110 and 25<=h<=70:
+            return [(240,120,240,120)]
+    return []
+
+
 class FunChallenge(FourPlayerQuiz):
     def _fun_options(self, records):
         return challenge_options(records, self.tasker.controller.cached_image)
@@ -528,7 +540,8 @@ class FunChallenge(FourPlayerQuiz):
                 raise TaskIncomplete('趣味答题两次收尾作答仍未结束，保留现场，未空等下一题超时')
             image = self.tasker.controller.cached_image.copy()
             visual,visual_area=visual_evidence(image,records,options,question_body(records,options))
-            picture_key=visual_identity(image,visual_area) if visual and visual_area is not None else None
+            timer_boxes=single_player_timer_boxes(records)
+            picture_key=visual_identity(image,visual_area,timer_boxes) if visual and visual_area is not None else None
             first_observed = getattr(self,'_last_screen_read_started',time.monotonic())
             answer = None
             if not fallback:
@@ -542,7 +555,7 @@ class FunChallenge(FourPlayerQuiz):
             fresh = self._fun_records()
             fresh_options = self._fun_options(fresh)
             if (fingerprint(fresh, fresh_options) != current or correct_count(fresh) != count
-                    or (picture_key is not None and picture_key != visual_identity(self.tasker.controller.cached_image,visual_area))):
+                    or (picture_key is not None and picture_key != visual_identity(self.tasker.controller.cached_image,visual_area,timer_boxes))):
                 self._fun_metrics['stale_evidence'] = dict(before=records, after=fresh,
                     before_options=options, after_options=fresh_options)
                 discarded = self._fun_metrics.get('stale_answers_discarded',0)+1

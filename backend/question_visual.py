@@ -55,7 +55,14 @@ def visual_evidence(image,records,options,question='',strict=False):
     return bool(visible or text_needs_image(question)),area
 
 
-def visual_identity(image,area):
+def visual_identity(image,area,ignore_boxes=()):
     if area is None:return None
     x1,y1,x2,y2=area
-    return hashlib.sha256(np.ascontiguousarray(image[y1:y2,x1:x2]).tobytes()).hexdigest()
+    pixels=image[y1:y2,x1:x2]
+    if ignore_boxes:
+        pixels=pixels.copy()
+        for x,y,w,h in ignore_boxes:
+            left,right=max(0,x-x1),min(x2-x1,x+w-x1)
+            top,bottom=max(0,y-y1),min(y2-y1,y+h-y1)
+            if right>left and bottom>top:pixels[top:bottom,left:right]=0
+    return hashlib.sha256(np.ascontiguousarray(pixels).tobytes()).hexdigest()

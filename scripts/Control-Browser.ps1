@@ -1,7 +1,19 @@
 # Keep browser data out of config backups. Move the whole dedicated profile only
 # while closed; never merge, delete, or stop an unverified browser to migrate it.
+function Get-ControlCanonicalPath([string]$Path) {
+    if (!('MaaXuexiShellLink' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'ShellLink.cs') }
+    return [MaaXuexiShellLink]::CanonicalPath([IO.Path]::GetFullPath($Path))
+}
+
+function Test-ControlProfileArgument([string]$Command, [string]$Expected) {
+    $argument = [regex]::Match($Command, '(?:^|\s)--user-data-dir=(?:"([^\"]+)"|([^\s\"]+))(?=\s|$)')
+    if (!$argument.Success) { return $false }
+    $value = if ($argument.Groups[1].Success) { $argument.Groups[1].Value } else { $argument.Groups[2].Value }
+    return (Get-ControlCanonicalPath $value) -eq (Get-ControlCanonicalPath $Expected)
+}
+
 function Get-ControlProfilePaths([string]$Root) {
-    $rootPath = [IO.Path]::GetFullPath($Root)
+    $rootPath = Get-ControlCanonicalPath $Root
     $legacy = Join-Path $rootPath 'config\control-browser'
     $profile = Join-Path $rootPath 'runtime\control-browser'
     foreach ($path in @($legacy,$profile)) {
@@ -18,7 +30,7 @@ function Get-ControlProfilePaths([string]$Root) {
 }
 
 function Get-ControlBrowserProfile([string]$Root) {
-    $rootPath = [IO.Path]::GetFullPath($Root)
+    $rootPath = Get-ControlCanonicalPath $Root
     $paths = Get-ControlProfilePaths $rootPath
     $legacy = $paths[0];$profile = $paths[1]
     if (!(Test-Path -LiteralPath $legacy)) { return $profile }
@@ -33,10 +45,9 @@ function Get-ControlBrowserProfile([string]$Root) {
         $guard = [IO.File]::Open((Join-Path $logs 'control-profile.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
         if (!(Test-Path -LiteralPath $legacy)) { return $profile }
         if (Test-Path -LiteralPath $profile) { return $legacy }
-        $pattern = '(?:^|\s)--user-data-dir=(?:"'+[regex]::Escape($legacy)+'"|'+[regex]::Escape($legacy)+')(?=\s|$)'
         $items = Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'" -ErrorAction Stop
         if ($items | Where-Object { [string]::IsNullOrWhiteSpace($_.CommandLine) }) { return $legacy }
-        if ($items | Where-Object { $_.CommandLine -match $pattern }) { return $legacy }
+        if ($items | Where-Object { Test-ControlProfileArgument $_.CommandLine $legacy }) { return $legacy }
         $null = New-Item -ItemType Directory -Path (Join-Path $rootPath 'runtime') -Force -ErrorAction Stop
         # Both paths were checked inside this installation. An atomic rename
         # refuses an existing destination instead of merging/nesting profiles.
@@ -57,14 +68,13 @@ function Get-OwnedControlBrowser([string]$Root) {
     try {
         $record = Get-Content -LiteralPath $recordPath -Raw -Encoding UTF8 | ConvertFrom-Json
         $allowed = Get-ControlProfilePaths $Root
-        if ($record.root -ne $Root -or $record.profile -notin $allowed) { return }
+        if ((Get-ControlCanonicalPath $record.root) -ne (Get-ControlCanonicalPath $Root) -or (Get-ControlCanonicalPath $record.profile) -notin $allowed) { return }
         $profile = $record.profile
         $proc = Get-Process -Id ([int]$record.pid) -ErrorAction Stop
         $started = if ($record.start_utc -is [DateTime]) { $record.start_utc.ToUniversalTime() } else { [DateTime]::Parse([string]$record.start_utc,[Globalization.CultureInfo]::InvariantCulture,[Globalization.DateTimeStyles]::RoundtripKind).ToUniversalTime() }
         if ($proc.Path -ne $record.executable -or $proc.StartTime.ToUniversalTime().Ticks -ne $started.Ticks) { return }
         $command = (Get-CimInstance Win32_Process -Filter ('ProcessId='+$proc.Id)).CommandLine
-        $profilePattern = '(?:^|\s)--user-data-dir=(?:"'+[regex]::Escape($profile)+'"|'+[regex]::Escape($profile)+')(?=\s|$)'
-        if ($proc.ProcessName -notin @('msedge','chrome') -or $command -notmatch $profilePattern) { return }
+        if ($proc.ProcessName -notin @('msedge','chrome') -or !(Test-ControlProfileArgument $command $profile)) { return }
         return $proc
     } catch { return }
 }
@@ -92,11 +102,10 @@ function Open-ControlBrowser([string]$Root) {
         '--no-first-run','--no-default-browser-check','--disable-background-mode',
         '--disable-extensions','--window-size=1180,940')
     $null = Start-Process -FilePath $browser -ArgumentList $arguments -WindowStyle Normal
-    $pattern = '(?:^|\s)--user-data-dir=(?:"'+[regex]::Escape($profile)+'"|'+[regex]::Escape($profile)+')(?=\s|$)'
     for ($step=0; $step -lt 40; $step++) {
         $items = Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'"
         foreach ($item in $items) {
-            if ($item.CommandLine -notmatch $pattern -or $item.CommandLine -match '(?:^|\s)--type=') { continue }
+            if (!(Test-ControlProfileArgument $item.CommandLine $profile) -or $item.CommandLine -match '(?:^|\s)--type=') { continue }
             $proc = Get-Process -Id $item.ProcessId -ErrorAction SilentlyContinue
             if (!$proc -or $proc.MainWindowHandle -eq 0) { continue }
             $record = @{pid=$proc.Id;root=$Root;profile=$profile;executable=$proc.Path;start_utc=$proc.StartTime.ToUniversalTime().ToString('O')}
