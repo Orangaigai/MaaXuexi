@@ -264,10 +264,13 @@ class FunChallenge(FourPlayerQuiz):
             return False
         mode=getattr(self,'_fun_mode',None)
         live_question=race_snapshot(records,self.tasker.controller.cached_image,mode) is not None
+        single_bank=(mode=='挑战答题' and detect_fun_mode(records)=='挑战答题'
+                     and any(row['text'].strip()=='强国总题库' and 120<=row['box'][1]<650
+                             for row in records))
         positive=(daily_scene(records) in ('center','profile','score','home','network')
                   or detect_fun_mode(records,True) in ('四人赛','双人对战')
                   or race_finished(records) or challenge_settled(records)
-                  or live_question or race_match_expired(records) or bool(race_network_error(records))
+                  or single_bank or live_question or race_match_expired(records) or bool(race_network_error(records))
                   or fingerprint(records,self._fun_options(records)) is not None)
         self._fun_resume_stable=getattr(self,'_fun_resume_stable',0)+1 if positive else 0
         ready=(live_question or self._fun_resume_stable>=2) and self._app_in_foreground()

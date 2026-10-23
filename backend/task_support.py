@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-VERSION = "local-20261023.6"
+VERSION = "local-20261023.7"
 REPORT_PATH = Path("config/last-run.json")
 # Basic tasks stay first; the remaining default order can be customized.
 # This grouping does not promise that a task is free of verification.

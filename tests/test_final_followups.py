@@ -81,7 +81,7 @@ class CaptureTimingTests(unittest.TestCase):
         value=worker();image=np.zeros((32,32,3),np.uint8)
         value._screen_ocr_cache=(image,[]);value.tasker.post_recognition=Mock()
         value.tasker.controller.post_screencap.return_value.wait.return_value.get.return_value=image
-        with patch('screen_reading.time.monotonic',side_effect=[10.,10.123,11.,11.456]):
+        with patch('screen_reading.time.perf_counter',side_effect=[10.,10.123,11.,11.456]):
             self.assertEqual(read_screen(value),[]);self.assertEqual(read_screen(value),[])
         self.assertEqual(value._screen_capture_metrics['samples'],2)
         self.assertAlmostEqual(value._screen_capture_metrics['seconds'],.456)

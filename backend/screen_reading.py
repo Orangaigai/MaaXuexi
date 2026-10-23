@@ -22,9 +22,9 @@ def content_roi(image):
 
 def read_screen(worker):
     """Capture afresh each call. Cache only byte-identical complete frames."""
-    started=time.monotonic()
+    started=time.perf_counter()
     image=worker.tasker.controller.post_screencap().wait().get()
-    capture_seconds=time.monotonic()-started
+    capture_seconds=time.perf_counter()-started
     record_time(worker,'截图',capture_seconds)
     if not isinstance(image,np.ndarray) or image.ndim!=3 or image.shape[2]!=3 or not image.size:
         worker.connected=False

@@ -98,6 +98,27 @@ class FunChallengeTests(unittest.TestCase):
         value.tasker.controller.post_click.assert_not_called()
         self.assertEqual(value._fun_metrics['stale_answers_discarded'],3)
 
+    def test_owner_wait_recognizes_single_player_bank_without_clicking(self):
+        value=self.make_worker();value._fun_mode='挑战答题'
+        bank=[dict(text='挑战答题',box=[290,58,140,40]),
+              dict(text='强国总题库',box=[200,185,300,60])]
+        value._screen_records=Mock(return_value=bank)
+        self.assertFalse(value._fun_resume_ready())
+        self.assertTrue(value._fun_resume_ready())
+        value.tasker.controller.post_click.assert_not_called()
+        value.tasker.post_task.assert_not_called()
+
+    def test_owner_wait_keeps_verification_and_incomplete_bank_unknown(self):
+        value=self.make_worker();value._fun_mode='挑战答题'
+        bank=[dict(text='挑战答题',box=[290,58,140,40]),
+              dict(text='强国总题库',box=[200,185,300,60])]
+        for rows in (bank+[dict(text='访问验证',box=[250,340,200,40])],bank[1:],
+                     [bank[0],dict(text='强国总题库',box=[100,800,300,60])]):
+            value._screen_records=Mock(return_value=rows)
+            self.assertFalse(value._fun_resume_ready())
+            self.assertFalse(value._fun_resume_ready())
+        value.tasker.controller.post_click.assert_not_called()
+
     def test_model_failure_before_minimum_does_not_guess_or_claim_credit(self):
         value = self.make_worker()
         value.ai_resolver.resolve_fun_choice.return_value = None
