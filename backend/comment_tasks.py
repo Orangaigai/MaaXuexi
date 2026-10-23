@@ -11,7 +11,7 @@ from daily_flow import verification_visible
 from four_player import race_network_error
 from home_navigation import home_ready
 from comment_drafts import ContextCommentDrafts, valid_comment_text, validate_draft, valid_article
-from comment_reading import article_page, append_page
+from comment_reading import article_page, append_page, title_line_text, editor_footer
 from task_support import HumanRequired, TaskIncomplete, TaskUnavailable, is_complete
 
 COMMENT_MODE = 'article_context_v1'
@@ -159,7 +159,7 @@ def comment_draft_ready(records, expected_text):
     return None
 
 
-def comment_article(records, *, require_body=True):
+def comment_article(records, *, require_body=True, image=None):
     if verification_visible(records) or comment_feed(records):
         return None
     sources = [r for r in records if 250 <= r['box'][1] < 400 and r['box'][0] < 200
@@ -181,7 +181,8 @@ def comment_article(records, *, require_body=True):
             return None
         left=min(r['box'][0] for r in line);top=min(r['box'][1] for r in line)
         right=max(r['box'][0]+r['box'][2] for r in line);bottom=max(r['box'][1]+r['box'][3] for r in line)
-        titles.append(dict(text=''.join(r['text'] for r in line),box=[left,top,right-left,bottom-top]))
+        titles.append(dict(text=''.join(title_line_text(r['text'],r['box'],image) for r in line),
+                           box=[left,top,right-left,bottom-top]))
     if not 1 <= len(titles) <= 3:
         return None
     if any(abs(left['box'][0]-right['box'][0]) > 30
@@ -373,8 +374,8 @@ class CommentTasks:
                     self.send_log('观点：跳过已有发表尝试或本轮审核未通过的文章')
                     continue
                 self._comment_click(dict(box=[int(box[0])+20, int(box[1])+30, min(350, int(box[2])-20), 50]))
-                records = self._comment_wait(lambda rs: comment_article(rs, require_body=False) is not None, timeout=45)
-                return comment_article(records, require_body=False)
+                records = self._comment_wait(lambda rs: comment_article(rs, require_body=False, image=self.tasker.controller.cached_image) is not None, timeout=45)
+                return comment_article(records, require_body=False, image=self.tasker.controller.cached_image)
             signature = tuple(titles)
             if signature and signature in seen_pages:
                 break
@@ -399,7 +400,7 @@ class CommentTasks:
             self._guard_verification(records, resume_when=self._comment_resume_ready)
             if verification_visible(records):
                 records = self._screen_records()
-            current = comment_article(records, require_body=False)
+            current = comment_article(records, require_body=False, image=self.tasker.controller.cached_image)
             if current and article_title_key(current['title']) == article_title_key(title):
                 return
             self._comment_article_bar()
@@ -410,18 +411,26 @@ class CommentTasks:
 
     def _comment_read_full_article(self, article):
         lines, prior = [], []
+        body_closed = False
         for page in range(12):
             records = self._screen_records()
             self._guard_verification(records, resume_when=self._comment_resume_ready)
             if verification_visible(records):
                 records = self._screen_records()
             if page == 0:
-                current_article = comment_article(records, require_body=False)
+                current_article = comment_article(records, require_body=False, image=self.tasker.controller.cached_image)
                 if not current_article or article_title_key(current_article['title']) != article_title_key(article['title']):
-                    raise TaskIncomplete('全文阅读开始前文章标题已变化，未继续翻动')
+                    report = getattr(self,'run_report',None)
+                    if report is not None:
+                        report.task('发表观点',article_identity=dict(stage='before_reading',expected=article['title'],
+                                    observed=current_article['title'] if current_article else None))
+                    raise TaskIncomplete('全文阅读开始前文章标题未一致，未继续翻动；预期：'+article['title']+
+                                         '；当前：'+(current_article['title'] if current_article else '尚未识别'))
             self._comment_article_bar()
             current, end = article_page(records, first=page == 0)
-            lines = append_page(lines, current, prior)
+            if not body_closed:
+                lines = append_page(lines, current, prior)
+            body_closed = body_closed or editor_footer(records)
             prior = current
             body = '\n'.join(lines)
             self.send_log(f'观点阅读全文：第{page+1}屏，已收集{len(body)}字'+('，已确认文末' if end else ''))
@@ -467,7 +476,7 @@ class CommentTasks:
         else:
             raise TaskUnavailable('三篇候选均未通过观点规则或复核，本轮跳过，未发布')
         records = self._screen_records()
-        current_article = comment_article(records, require_body=False)
+        current_article = comment_article(records, require_body=False, image=self.tasker.controller.cached_image)
         report = getattr(self, 'run_report', None)
         if report is not None:
             report.task('发表观点', article_identity=dict(expected=article['title'],
