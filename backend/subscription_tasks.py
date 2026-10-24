@@ -18,10 +18,10 @@ PAGES_PER_CATEGORY = 5
 def subscription_scene(records):
     if verification_visible(records):
         return None
-    texts = {re.sub(r'\s+', '', row['text']) for row in records}
-    if '我的订阅' in texts and '添加' in texts:
-        return 'mine'
     tabs = {re.sub(r'\s+', '',r['text']) for r in records if 35<=r['box'][1]<120}
+    if '我的订阅' in tabs and any(re.sub(r'\s+','',r['text'])=='添加'
+            and 560<=r['box'][0]<720 and 35<=r['box'][1]<120 for r in records):
+        return 'mine'
     if '地方平台' in tabs and any(re.fullmatch(r'[强強]{1,2}国号',text) for text in tabs):
         return 'catalog'
     return None
@@ -155,9 +155,18 @@ class SubscriptionTasks:
         self._check_active()
         before = self._sub_records()
         scene = subscription_scene(before) or daily_scene(before)
-        if self.tasker.post_task('返回').wait().get().status.failed:
+        if scene not in ('mine','catalog','score') or cancellation_action(before) is not None:
+            raise TaskIncomplete('订阅返回前未确认可导航页面，保留现场')
+        if scene in ('mine','catalog'):
+            # These subscription pages expose an app back arrow. Android Back
+            # may only dismiss a just-closed sheet without leaving the list.
+            self._sub_click(dict(text='订阅页顶部返回',box=[14,36,64,68]))
+        elif self.tasker.post_task('返回').wait().get().status.failed:
             raise TaskIncomplete('订阅页面返回未成功')
-        self._sub_wait(lambda rows:(subscription_scene(rows) or daily_scene(rows)) != scene)
+        def arrived(rows):
+            target = subscription_scene(rows) or daily_scene(rows)
+            return target in ('mine','catalog','profile','home','score') and target != scene
+        self._sub_wait(arrived)
 
     def _sub_mine(self):
         """Use the recognized back stack, avoiding an app restart for every point check."""
