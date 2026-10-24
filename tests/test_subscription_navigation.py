@@ -87,3 +87,43 @@ class SubscriptionNavigationTests(unittest.TestCase):
         self.assertEqual(result,self.mine)
         value._sub_click.assert_called_once()
         value.tasker.post_task.assert_not_called()
+
+    def test_optimistic_state_keeps_observing_until_delayed_owner_wait_returns(self):
+        value=self.worker([]);clock=[0.];observed=[]
+        value._paused_seconds=0
+        def records():
+            observed.append(clock[0])
+            if len(observed)==3:
+                # _sub_records handles the real owner wait, returning only
+                # after the CAPTCHA has left; there is no automated input.
+                clock[0]+=60;value._paused_seconds+=60
+            return self.mine
+        value._sub_records=Mock(side_effect=records)
+        value._sleep.side_effect=lambda seconds:clock.__setitem__(0,clock[0]+1)
+        with patch('subscription_tasks.time.monotonic',side_effect=lambda:clock[0]):
+            self.assertEqual(value._sub_wait(lambda rows:True,settle_seconds=4),self.mine)
+        self.assertEqual(clock[0],66)
+        value._sub_click.assert_not_called();value.tasker.post_task.assert_not_called()
+
+    def test_failed_optimistic_state_resets_the_stability_window(self):
+        value=self.worker([]);clock=[0.];calls=[0]
+        def records():
+            calls[0]+=1
+            return [] if calls[0]==3 else self.mine
+        value._sub_records=Mock(side_effect=records)
+        value._sleep.side_effect=lambda seconds:clock.__setitem__(0,clock[0]+1)
+        with patch('subscription_tasks.time.monotonic',side_effect=lambda:clock[0]):
+            value._sub_wait(bool,settle_seconds=4)
+        self.assertEqual(clock[0],7)
+        value._sub_click.assert_not_called()
+
+    def test_unsettled_action_times_out_and_never_returns_transient_success(self):
+        value=self.worker([]);clock=[0.];calls=[0]
+        def records():
+            calls[0]+=1
+            return self.mine if calls[0]%2 else []
+        value._sub_records=Mock(side_effect=records)
+        value._sleep.side_effect=lambda seconds:clock.__setitem__(0,clock[0]+1)
+        with patch('subscription_tasks.time.monotonic',side_effect=lambda:clock[0]):
+            with self.assertRaises(TaskIncomplete):value._sub_wait(bool,timeout=6,settle_seconds=4)
+        value._sub_click.assert_not_called();value.tasker.post_task.assert_not_called()

@@ -118,16 +118,27 @@ class SubscriptionTasks:
         self._guard_verification(records)
         return self._screen_records() if verification_visible(records) else records
 
-    def _sub_wait(self, predicate, timeout=12, required=True):
+    def _sub_wait(self, predicate, timeout=12, required=True, settle_seconds=0):
         deadline = time.monotonic() + timeout
         paused_seconds = getattr(self,'_paused_seconds',0)
+        stable_since = None
         while time.monotonic() < deadline:
             records = self._sub_records()
             total_paused = getattr(self,'_paused_seconds',0)
-            deadline += max(0,total_paused-paused_seconds)
+            pause_delta = max(0,total_paused-paused_seconds)
+            deadline += pause_delta
+            if pause_delta:
+                stable_since = None
             paused_seconds = total_paused
             if predicate(records):
-                return records
+                if not settle_seconds:
+                    return records
+                if stable_since is None:
+                    stable_since = time.monotonic()
+                if time.monotonic()-stable_since >= settle_seconds:
+                    return records
+            else:
+                stable_since = None
             self._sleep(.4)
         self._sub_evidence('unrecognized',records)
         if required:
@@ -328,7 +339,7 @@ class SubscriptionTasks:
         # The verification WebView may load after the tap has returned. Stay on
         # this request until the named account is visibly followed; do not leave
         # a blank/loading frame to check scores and cancel a pending follow.
-        saved=self._sub_wait(lambda rows:self._sub_named_account(rows,account['name'],'已订阅'))
+        saved=self._sub_wait(lambda rows:self._sub_named_account(rows,account['name'],'已订阅'),settle_seconds=4)
         self._sub_evidence('follow-saved',saved)
         membership_saved=self._sub_follow_saved(account['name'])
         self.send_log(('已确认关注保存：' if membership_saved else '关注列表尚未确认：')
@@ -470,7 +481,9 @@ class SubscriptionTasks:
             self._sub_click(found)
             dialog = self._sub_wait(lambda rows:cancellation_action(rows) is not None)
             self._sub_click(cancellation_action(dialog))
-            result = self._sub_wait(lambda rows:self._sub_row_cancelled(rows,attempt['name']))
+            # The button updates optimistically before a delayed verification
+            # WebView. Observe this request before navigating away from it.
+            result = self._sub_wait(lambda rows:self._sub_row_cancelled(rows,attempt['name']),settle_seconds=4)
             self._sub_evidence('cancelled-'+attempt['id'][:12],result)
             cancelled.append(attempt)
             self.send_log('已在列表取消：'+attempt['name']+'；继续处理下一项')

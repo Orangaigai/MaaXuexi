@@ -452,14 +452,17 @@ class FlowTests(unittest.TestCase):
         before=[dict(text='强国号',box=[245,65,80,32]),dict(text='地方平台',box=[365,68,105,30]),
                 dict(text='频道',box=[215,144,80,25]),dict(text='订阅',box=[640,145,45,25])]
         saved=[dict(r,text='已订阅') if r['text']=='订阅' else r for r in before]
-        self.value._sub_records=Mock(side_effect=[before,[],saved,saved])
+        self.value._sub_records=Mock(side_effect=[before,[],saved,saved,saved,saved])
         self.value._sub_click=Mock();self.value._sub_evidence=Mock();self.value._sleep=Mock()
         self.value._sub_follow_saved=Mock(return_value=True)
+        clock=[0.]
+        self.value._sleep.side_effect=lambda seconds:clock.__setitem__(0,clock[0]+2.1)
         def score():
-            self.assertEqual(self.value._sub_records.call_count,3)
+            self.assertEqual(self.value._sub_records.call_count,5)
             return dict(value=1,maximum=2)
         self.value._sub_score=Mock(side_effect=score)
-        result=self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
+        with patch('subscription_tasks.time.monotonic',side_effect=lambda:clock[0]):
+            result=self.value._sub_follow(dict(name='频道',kind='强国号'),self.store,dict(value=0,maximum=2))
         self.assertEqual(result['value'],1)
         self.value._sub_click.assert_called_once()
 
