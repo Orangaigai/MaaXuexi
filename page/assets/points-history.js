@@ -133,10 +133,10 @@
   function completion(){
     const targets=[lastAction?.close_emulator!==false?'模拟器':'',lastAction?.close_console!==false?'控制台':''].filter(Boolean).join('和');
     const state=lastAction?.state;$('completionBanner').hidden=!['pending','closing','failed','cancelled'].includes(state);
-    $('keepOpen').hidden=state!=='pending';
+    const seconds=Math.max(0,Math.ceil((Date.parse(lastAction?.closes_at)-Date.now())/1000));
+    $('keepOpen').hidden=state!=='pending'||!(seconds>0);
     if(state==='pending'){
-      const seconds=Math.max(0,Math.ceil((Date.parse(lastAction.closes_at)-Date.now())/1000));
-      $('completionMessage').textContent=`积分已记录，${seconds}秒后关闭${targets}。`;
+      $('completionMessage').textContent=seconds>0?`积分已记录，${seconds}秒后关闭${targets}。`:`积分已记录，准备关闭${targets}…`;
     }else if(state==='closing')$('completionMessage').textContent=`积分已记录，正在关闭${targets}…`;
     else if(state==='failed')$('completionMessage').textContent=lastAction.message;
     else if(state==='cancelled')$('completionMessage').textContent='积分已记录，本次保持打开。';

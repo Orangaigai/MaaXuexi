@@ -9,6 +9,7 @@
 | `daily_flow.py` | 每日提交、本人验证等待、结果页与自动返回 |
 | `daily_hints.py` / `blank_hints.py` / `daily_text.py` / `daily_gaps.py` / `daily_choices.py` | 提示匹配、填空上下文、完整文本分流、多选空格计数和长图片选项的收集与点击 |
 | `fun_challenge.py` / `four_player.py` | 当日趣味模式、限时答案、结算与退出 |
+| `challenge_preferences.py` | 单人题量偏好、整数区间正态概率、计划均值和独立配置 |
 | `screen_reading.py` / `question_visual.py` | 完整画面读取、相同画面OCR复用、图片证据分流 |
 | `answer_client.py` / `timed_http.py` | 官方DeepSeek请求、结构化答案、限时取消和连接复用 |
 | `subscription_tasks.py` / `subscription_store.py` | 订阅核分、程序新增关注清理、轮次计数 |
@@ -23,10 +24,10 @@
 | `history_reader.py` / `history_import.py` | 独立历史读取、双向 OCR 核对、导入状态及首次选择；不创建每日任务报告或调用模型 |
 | `ledger_reading.py` / `history_ledger.py` | 手机端逐日流水读取、重叠拼接、正反两遍及总分对账、SQLite 日快照 |
 | `local_preferences.py` / `window_policy.py` | 本机显示与通知偏好、指定MuMu窗口归属检查、非激活显示及验证后恢复 |
-| `completion_actions.py` | 完成后倒计时、取消及后台退出协调；未完成或保存失败时保留现场 |
+| `completion_actions.py` | 完成并持久保存后的立即收尾及后台退出协调；未完成或保存失败时保留现场 |
 | `Control-Browser.ps1` / `Finish-Session.ps1` | 独立控制台窗口归属核对、指定模拟器实例关闭与资源收尾 |
 
-正常流程：启动入口准备设备 → 用户或Windows计划发起任务 → 确认应用页面 → 新鲜核分 → 依次执行未满分项目 → 再核分并保存积分与任务结果 → 全部完成后按选项倒计时关闭。只查看当天已完成记录时不启动模拟器，执行新任务或次日定时启动仍会准备设备。
+正常流程：启动入口准备设备 → 用户或Windows计划发起任务 → 确认应用页面 → 新鲜核分 → 依次执行未满分项目 → 再核分并保存积分与任务结果 → 全部完成后立即按关闭选项收尾。只查看当天已完成记录时不启动模拟器，执行新任务或次日定时启动仍会准备设备。
 
 所选基础任务按固定顺序排在前面；其余四项以完整`task_order`保存相对次序，未勾选项也保留位置。`TaskPlanModel`校验四项完整且不重复；`TaskModel`和工作线程只固定基础任务，保留其余请求顺序。Windows启动器同步校验并按保存顺序组装所选清单，旧配置使用原默认顺序。运行报告的`selected_tasks`保存本轮完整顺序，续跑优先恢复它，不依赖JSON对象键顺序或后来修改的计划；旧报告回退到原任务键顺序。任务进行中不允许改清单或排序，暂停、验证和核分逻辑不因排序改变。
 

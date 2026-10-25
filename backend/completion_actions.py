@@ -8,7 +8,8 @@ import threading
 import time
 
 OPTIONS_PATH = Path('config/completion-options.json')
-COUNTDOWN_SECONDS = 30
+# record_run has committed before arm(); the next poll may close immediately.
+COUNTDOWN_SECONDS = 0
 
 
 def read_options():

@@ -31,6 +31,8 @@ from points_history import PointsHistory
 from history_import import HistoryImport
 from completion_actions import CompletionActions, read_options, save_options
 from local_preferences import LocalPreferences, read_preferences, save_preferences
+from challenge_preferences import (ChallengePreferences, challenge_profile_summary,
+                                   read_challenge_preferences, save_challenge_preferences)
 
 class CompletionOptions(BaseModel):
     auto_close: StrictBool | None = None
@@ -200,6 +202,7 @@ def homepage():
     html = html.replace('</body>', '<script defer src="/assets/schedule-summary.js?v=' + VERSION + '"></script></body>')
     html = html.replace('</body>', '<script defer src="/assets/points-history.js?v=' + VERSION + '"></script></body>')
     html = html.replace('</body>', '<script defer src="/assets/history-import.js?v=' + VERSION + '"></script></body>')
+    html = html.replace('</body>', '<script defer src="/assets/challenge-preferences.js?v=' + VERSION + '"></script></body>')
     return HTMLResponse(html, headers={'Cache-Control':'no-store'})
 
 @app.get('/local/api-key')
@@ -214,7 +217,8 @@ def api_key_page(source: str | None = None):
 @app.get('/local/settings')
 def preferences_page():
     html = Path('page/settings.html').read_text('utf-8')
-    for name in ('local-settings.js', 'history-import.js', 'schedule-view.js', 'local-schedule.js', 'settings.css', 'ui-base.css', 'console.css'):
+    for name in ('local-settings.js', 'history-import.js', 'schedule-view.js', 'local-schedule.js',
+                 'challenge-preferences.js', 'settings.css', 'ui-base.css', 'console.css'):
         html = html.replace('/assets/'+name, '/assets/'+name+'?v='+VERSION)
     return HTMLResponse(html, headers={'Cache-Control':'no-store'})
 
@@ -245,6 +249,24 @@ def show_emulator_once():
     if not policy.show_once():
         raise HTTPException(409, '模拟器尚未启动，请先执行任务。')
     return dict(status='success')
+
+
+@app.get('/api/local/challenge-preferences')
+def get_challenge_preferences():
+    value = read_challenge_preferences()
+    return dict(**value, profiles=challenge_profile_summary(limit=value['limit']))
+
+
+@app.post('/api/local/challenge-preferences')
+def update_challenge_preferences(options: ChallengePreferences):
+    # Saving while a round runs is allowed on purpose: the snapshot was taken
+    # at that round's start, so the change applies from the next round on.
+    try:
+        value = save_challenge_preferences(options.model_dump())
+    except OSError as error:
+        raise HTTPException(503, '单人挑战设置未保存，请检查本机文件权限。') from error
+    return dict(**value, profiles=challenge_profile_summary(limit=value['limit']),
+                message='已保存，下一局单人挑战生效；正在执行的一局按启动时的设置完成。')
 
 
 @app.get('/api/settings')

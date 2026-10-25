@@ -39,18 +39,33 @@ class ReaderReactionTests(unittest.TestCase):
         self.assertIsNone(engine.generate(ARTICLE))
         self.assertEqual(engine.last_error,'review_rejected')
 
-    def test_multiple_or_misplaced_punctuation_is_not_accepted(self):
+    def test_repeated_or_unattached_punctuation_is_not_accepted(self):
         for text in ('原来真实交流还有这样的作用！！','原来真实交流还有这样的作用!！',
-                     '原来真实交流！还有这样的作用','原来真实交流还有这样的作用。！',
+                     '原来真实交流还有这样的作用。！',
                      '，原来真实交流还有这样的作用','原来真实交流，，还有这样的作用',
-                     '原来真实交流，还有这样的作用，学到了',
-                     '原来真实交流还有这样的作用\n','原来真实交流还有这样的作用？'):
+                     '原来真实交流还有这样的作用\n'):
             with self.subTest(text=text):
                 self.assertFalse(valid_comment_text(text))
+
+    def test_natural_short_clauses_or_a_question_can_reach_fact_review(self):
+        for text in ('原来真实交流！还有这样的作用','原来真实交流，还有这样的作用，学到了',
+                     '原来真实交流还有这样的作用？'):
+            self.assertTrue(valid_comment_text(text))
 
     def test_existing_period_and_single_ascii_exclamation_are_accepted(self):
         for text in ('真实交流的作用还真不少。','真实交流的作用还真不少!','真实交流的作用还真不少'):
             self.assertTrue(valid_comment_text(text))
+
+    def test_question_width_can_confirm_input_and_the_same_posted_comment(self):
+        text='叶片夜里还会合起来，还有哪些植物会这样？'
+        draft=[dict(text=text.replace('？','?'),box=[25,1155,540,32]),
+               dict(text='发布',box=[630,1210,50,32])]
+        self.assertEqual(comment_draft_ready(draft,text),draft[-1])
+        posted=[dict(text=text.replace('？','?'),box=[85,1000,540,32]),
+                dict(text='刚刚·回复',box=[85,1060,140,32]),dict(text='删除',box=[650,1060,55,32])]
+        self.assertTrue(comment_posted(posted,text))
+        posted[0]['text']=posted[0]['text'].replace('夜里','白天')
+        self.assertFalse(comment_posted(posted,text))
 
     def test_emotion_does_not_allow_fabricated_evidence_or_out_of_scope_promises(self):
         self.assertIsNone(validate_draft(dict(DRAFT,comment='人的认知还会这样起作用，长知识了！',

@@ -39,5 +39,6 @@ jobs:
           node --check page/assets/schedule-view.js
           node --check page/assets/schedule-summary.js
           node --check page/assets/key-setup.js
+          node --check page/assets/challenge-preferences.js
       - name: Offline regression
         run: python -m unittest discover -s tests -p 'test_*.py' -q

@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>设置 · MaaXuexi</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=local-20261024.2">
-  <link rel="icon" type="image/svg+xml" sizes="any" href="/assets/logo.svg?v=local-20261024.2">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=local-20261025.1">
+  <link rel="icon" type="image/svg+xml" sizes="any" href="/assets/logo.svg?v=local-20261025.1">
   <link rel="stylesheet" href="/assets/ui-base.css">
   <link rel="stylesheet" href="/assets/console.css">
   <link rel="stylesheet" href="/assets/settings.css">
@@ -13,6 +13,7 @@
   <script defer src="/assets/history-import.js"></script>
   <script defer src="/assets/schedule-view.js"></script>
   <script defer src="/assets/local-schedule.js"></script>
+  <script defer src="/assets/challenge-preferences.js"></script>
 </head>
 <body>
 <main class="settings-page">
@@ -21,7 +22,7 @@
     <span id="settingsConnection" class="badge">连接中…</span>
   </header>
   <div class="settings-layout">
-    <nav class="settings-nav" aria-label="设置分类"><a href="#executionHeading">执行与定时</a><a href="#displayHeading">窗口与通知</a><a href="#finishHeading">运行收尾</a><a href="#recordsHeading">积分记录</a><a href="#serviceHeading">答题服务</a><a href="#supportHeading">帮助与排查</a></nav>
+    <nav class="settings-nav" aria-label="设置分类"><a href="#executionHeading">执行与定时</a><a href="#displayHeading">窗口与通知</a><a href="#finishHeading">运行收尾</a><a href="#recordsHeading">积分记录</a><a href="#challengeHeading">单人挑战</a><a href="#serviceHeading">答题服务</a><a href="#supportHeading">帮助与排查</a></nav>
     <div class="settings-content">
       <section class="card execution-card" aria-labelledby="executionHeading">
         <div class="section-heading"><h2 id="executionHeading">执行与定时</h2><span id="runMode" class="badge">读取执行方式…</span></div>
@@ -81,7 +82,7 @@
         <p class="section-description">全部所选任务完成并保存积分后执行；未完成或等待验证时保留现场。</p>
         <label class="setting-switch"><span><strong>完成后关闭模拟器</strong><small>退出本项目配置的 MuMu 实例，释放模拟器占用。</small></span><input id="settingsCloseEmulator" type="checkbox" role="switch" disabled></label>
         <label class="setting-switch"><span><strong>完成后关闭网页控制台</strong><small>关闭本项目的独立控制台窗口和后台，积分记录仍会保留。</small></span><input id="settingsCloseConsole" type="checkbox" role="switch" disabled></label>
-        <p class="settings-note">关闭前倒计时 30 秒，可在控制台选择“本次保持打开”。</p>
+        <p class="settings-note">任务全部完成并保存积分后立即关闭。需要保留窗口时，请提前关闭对应开关。</p>
         <p id="finishMessage" class="feedback" role="status" aria-live="polite"></p>
       </section>
       <section class="card records-settings" aria-labelledby="recordsHeading">
@@ -97,6 +98,35 @@
           <dl class="history-import-estimate"><div><dt>读取方式</dt><dd>模拟器翻阅 · 本机文字识别（OCR）</dd></div><div><dt>预计用时</dt><dd>近 30 天首次约 8～15 分钟<br><small>取决于明细数量、设备性能和页面加载速度。</small></dd></div><div><dt>API 费用</dt><dd><strong>0 元</strong> · 不调用 DeepSeek</dd></div></dl>
           <p class="muted">读取期间请勿操作模拟器，可随时取消。仅保存已核实记录。</p><div class="history-import-dialog-actions"><button id="historyConfirmCancel">返回</button><button id="historyConfirmStart" class="primary">确认导入</button></div>
         </dialog>
+      </section>
+      <section class="card challenge-settings" aria-labelledby="challengeHeading">
+        <div class="settings-section-title"><div><h2 id="challengeHeading">单人挑战</h2><p>规划“趣味答题”中单人挑战答对多少题后收尾；双人对战和四人赛不受影响。</p></div><span id="challengeEditState" class="challenge-edit">读取中…</span></div>
+        <p class="section-description">按正态分布随机规划，计划目标最低3题，提前答错即结束。</p>
+        <div class="challenge-picker">
+          <label class="sr-only" for="challengeProfile">单人挑战档位</label>
+          <input id="challengeProfile" class="challenge-slider" type="range" min="0" max="4" step="1" value="0" aria-describedby="challengeProfileHint" disabled>
+          <div id="challengeTicks" class="challenge-ticks" role="group" aria-label="选择单人挑战档位">
+            <button type="button" data-profile="beginner" disabled>入门<em>推荐</em></button>
+            <button type="button" data-profile="practiced" disabled>熟练</button>
+            <button type="button" data-profile="knowledgeable" disabled>博学</button>
+            <button type="button" data-profile="adept" disabled>达人</button>
+            <button type="button" data-profile="master" disabled>大师</button>
+          </div>
+          <p id="challengeProfileHint" class="challenge-profile-hint muted">点击或拖动选择，也支持方向键切换。均值按已保存上限、最低3题计算。</p>
+          <dl id="challengeDetails" class="challenge-details" aria-live="polite"></dl>
+        </div>
+        <details class="challenge-advanced" id="challengeAdvanced">
+          <summary>题数上限（高级）</summary>
+          <div class="challenge-limit">
+            <label for="challengeLimit">每局计划题数上限</label>
+            <input id="challengeLimit" type="number" inputmode="numeric" min="20" max="100" step="1" value="50" disabled>
+            <span class="muted">20～100 的整数，默认 50。</span>
+          </div>
+          <p class="settings-note">上限越高，较高档位越可能计划更多题；实际平台计分要求优先。</p>
+        </details>
+        <p class="settings-note">通常连续答对3题即可拿满，以当日规则为准。多答会增加时间和 API 用量；设置从下一局生效。</p>
+        <div class="settings-save challenge-save"><button id="challengeSave" class="primary" type="button" disabled>保存单人挑战设置</button></div>
+        <p id="challengeMessage" class="feedback" role="status" aria-live="polite"></p>
       </section>
       <section class="card" aria-labelledby="serviceHeading">
         <div class="settings-section-title"><div><h2 id="serviceHeading">DeepSeek 答题服务</h2><p id="settingsProvider">正在读取配置状态…</p></div><a id="settingsProviderSetup" class="button compact" href="/local/api-key?source=settings">管理密钥</a></div>

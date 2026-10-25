@@ -9,6 +9,8 @@ from PIL import Image, ImageFilter
 
 from task_support import TaskIncomplete, TaskUnavailable, HumanRequired
 from question_visual import visual_evidence, visual_identity
+from challenge_preferences import (CHALLENGE_LIMIT_DEFAULT, challenge_length_weights,
+                                   challenge_profile_params, read_challenge_preferences)
 from four_player import FourPlayerQuiz, detect_fun_mode, race_network_error, race_match_expired, quiz_center, race_snapshot, race_finished, quiz_identity, race_score_page
 
 
@@ -128,10 +130,14 @@ def challenge_target(rules, maximum=10):
     return 10
 
 
-def challenge_length(minimum):
-    """Choose once per single-player round; never finish below the scoring rule."""
-    counts=list(range(max(3,minimum),16))
-    return choices(counts,weights=[34 if count<=9 else 7 for count in counts],k=1)[0]
+def challenge_length(minimum, profile='beginner', limit=CHALLENGE_LIMIT_DEFAULT):
+    """Choose once per single-player round; never finish below the scoring rule.
+
+    The plan is drawn from the tier's truncated normal over the ±0.5 interval
+    of each allowed count, so the cap is adjustable instead of locked at 15.
+    """
+    counts, weights = challenge_length_weights(minimum, profile, limit)
+    return choices(counts,weights=weights,k=1)[0]
 
 
 def single_player_timer_boxes(records):
@@ -482,15 +488,23 @@ class FunChallenge(FourPlayerQuiz):
         self._fun_metrics = dict(mode='挑战答题', target_correct=target, target_rules=rules, questions_clicked=0,
                                  model_calls=0, confirmed_correct=0, exited=False,
                                  ending_answers_clicked=0, count_evidence='single-player next-question transitions', model_seconds=[])
+        # One snapshot per round: settings saved while this round runs apply to the next one.
+        preference = read_challenge_preferences()
         opening_records = self._open_fun_challenge()
         self._fun_metrics['mode']=self._fun_mode
         if self._fun_mode == '四人赛':
             return self.four_player_answer(opening_records)
         if self._fun_mode == '双人对战':
             return self.two_player_answer(opening_records)
-        planned=challenge_length(target)
-        self._fun_metrics.update(planned_correct=planned,model_call_limit=planned+4)
-        self.send_log(f'单人挑战：本局计划答对{planned}题；平台计分要求为{target}题，提前答错则结束本局')
+        profile = preference['profile']
+        plan_params = challenge_profile_params(profile)
+        minimum = max(3, target)
+        planned=challenge_length(target, profile=profile, limit=preference['limit'])
+        self._fun_metrics.update(planned_correct=planned,model_call_limit=planned+4,
+                                 plan_profile=profile, plan_center=plan_params['center'],
+                                 plan_sigma=plan_params['sigma'], plan_minimum=minimum)
+        self.send_log(f'单人挑战：本局按{plan_params["label"]}档（中心{plan_params["center"]}、宽度{plan_params["sigma"]}）'
+                      f'随机计划答对{planned}题；计划下限{minimum}题，平台计分要求{target}题，提前答错则结束本局')
         pending = None
         highest = 0
         idle = 0

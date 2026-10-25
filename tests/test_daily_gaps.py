@@ -83,6 +83,16 @@ class GapTests(unittest.TestCase):
         records=[r for r in records if not r['text'].startswith('非法传销是指')]
         self.assertIsNone(count_choice_gaps(records,image,visible_options(records)))
 
+    def test_first_stem_line_can_start_with_a_whole_blank(self):
+        records,image,options=sample()
+        records[1]['box']=[140,320,480,30]
+        image[325:352,130:270]=255
+        image[350:352,65:120]=180
+        image[325:345,130:140]=30
+        self.assertEqual(count_choice_gaps(records,image,options),2)
+        page=choice_page(records,image,options,'多选题')
+        self.assertEqual(all_options_from_gaps(page,records,image,options),list('AB'))
+
     def test_dividers_thick_lines_and_absent_text_do_not_count_as_blanks(self):
         for modification in ('thick','divider','no_anchors'):
             records,image,options=sample()
@@ -151,7 +161,7 @@ class GapTests(unittest.TestCase):
         value.tasker.controller.post_screencap.return_value.wait.return_value.get.return_value=image
         value._prepare('多选题')
         self.assertIsNone(value._daily_direct_choices)
-        self.assertEqual([call.args[0] for call in value.tasker.post_task.call_args_list],['查找提示','查看提示','关闭提示'])
+        self.assertEqual([call.args[0] for call in value.tasker.post_task.call_args_list],['查看提示','关闭提示'])
 
     def test_complete_illustrated_inventory_can_skip_hint_without_becoming_text_only(self):
         records,image,options=sample()

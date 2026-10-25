@@ -4,10 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>MaaXuexi · 任务控制台</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=local-20261024.2">
-  <link rel="icon" type="image/svg+xml" sizes="any" href="/assets/logo.svg?v=local-20261024.2">
-  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261024.2">
-  <link rel="stylesheet" href="/assets/console.css?v=local-20261024.2">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=local-20261025.1">
+  <link rel="icon" type="image/svg+xml" sizes="any" href="/assets/logo.svg?v=local-20261025.1">
+  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261025.1">
+  <link rel="stylesheet" href="/assets/console.css?v=local-20261025.1">
 </head>
 <body>
 <main>
@@ -47,6 +47,7 @@
         <div class="task-group-heading"><h3 id="verificationTaskHeading" class="verification-tag">可能需本人验证</h3><span>按你的顺序</span></div>
         <p id="taskOrderHint" class="task-order-hint">拖动或用箭头排序，仅执行勾选的任务。</p>
         <div id="verificationChoices" class="task-items" role="list" aria-describedby="taskOrderHint"></div>
+        <p id="challengeSummary" class="task-order-hint" hidden>单人偏好：<span id="challengeSummaryName">入门</span> · <a href="/local/settings#challengeHeading">修改</a></p>
       </section>
     </div>
     <div class="task-actions"><button id="save" class="accent" disabled>保存所选任务</button><button id="saveBase" class="quiet" disabled title="保存登录、选读文章、视听学习、本地频道四项">保存基础任务</button><button id="start" class="primary start-button" disabled>立即执行</button></div>

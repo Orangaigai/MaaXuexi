@@ -80,6 +80,21 @@ class CompletionActionTests(unittest.TestCase):
                 self.action.poll(changed,running=running,shutdown=Mock());spawn.assert_not_called()
             self.assertEqual(self.action.snapshot()['state'],'cancelled')
 
+    def test_saved_completed_run_starts_closing_on_the_first_poll(self):
+        process=Mock();process.poll.return_value=0
+        with (patch.object(actions.time,'monotonic',return_value=123),
+              patch.object(actions.subprocess,'Popen',return_value=process) as spawn,
+              patch.dict(os.environ,{'SystemRoot':self.tmp.name}),
+              patch.object(actions.Path,'cwd',return_value=Path(self.tmp.name))):
+            self.action.arm(report())
+            self.assertEqual(self.action.deadline,123)
+            self.action.poll(report(),running=False,shutdown=Mock())
+            spawn.assert_called_once()
+            self.assertEqual(self.action.snapshot()['state'],'closing')
+            shutdown=Mock()
+            self.action.poll(report(),running=False,shutdown=shutdown)
+            shutdown.assert_called_once()
+
     def start_closing(self,process):
         self.action.arm(report());self.action.deadline=0
         with (patch.object(actions.subprocess,'Popen',return_value=process) as spawn,

@@ -2,6 +2,7 @@
 import re
 import numpy as np
 from daily_hints import clean
+from daily_choices import hint_link
 from question_visual import visual_evidence
 
 
@@ -30,7 +31,7 @@ def _choice_layout(records, image, options, question_type):
         return None
     headings = [r for r in records if r['text'].strip() == question_type
                 and 130 <= r['box'][1] <= 400]
-    links = [r for r in records if r['text'].strip() == '查看提示']
+    links = [r for r in records if hint_link(r)]
     labels = [r for r in records if re.match(r'^[A-F](?:[.．、:：\s]|$)', r['text'].strip())
               and 30 <= r['box'][0] <= 160 and 300 <= r['box'][1] < 1130]
     labels.sort(key=lambda r: r['box'][1])

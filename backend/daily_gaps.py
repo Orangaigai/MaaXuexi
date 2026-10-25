@@ -55,12 +55,18 @@ def count_choice_gaps(records, image, options):
         left_text=np.count_nonzero(band[:,max(55,left-70):left])>=4
         right_text=np.count_nonzero(band[:,right:min(665,right+70)])>=4
         if left<90:
-            # A new row can start with a whole blank after a full line of text.
+            # The first stem line may begin with a blank; later lines need a
+            # preceding full text row, so wrapped fragments stay ambiguous.
             preceding=[r for r in rows if 30<=y-r['box'][1]-r['box'][3]<=70]
-            if left>80 or not preceding or not right_text:return None
-            end_y=max(r['box'][1]+r['box'][3] for r in preceding)
-            if not any(r['box'][0]+r['box'][2]>=620 and
-                       abs(r['box'][1]+r['box'][3]-end_y)<=8 for r in preceding):return None
+            earlier_ink=image[top:max(top,y-42),55:665,:3].min(axis=2)<100
+            first_line=(np.count_nonzero(earlier_ink)<4
+                        and not any(r['box'][1]+r['box'][3]<y-20 for r in rows)
+                        and any(-8<=y-r['box'][1]-r['box'][3]<=12
+                                and r['box'][0]+r['box'][2]>right+10 for r in rows))
+            end_y=max((r['box'][1]+r['box'][3] for r in preceding),default=0)
+            wrapped_line=any(r['box'][0]+r['box'][2]>=620 and
+                             abs(r['box'][1]+r['box'][3]-end_y)<=8 for r in preceding)
+            if left>80 or not right_text or not(first_line or wrapped_line):return None
         elif not left_text:return None
         if right>635:
             following=[r for r in rows if last_y+4<r['box'][1]<last_y+55]

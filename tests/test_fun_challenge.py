@@ -27,8 +27,10 @@ def page(count, question='这道题应该选哪一个'):
 
 class FunChallengeTests(unittest.TestCase):
     def setUp(self):
-        patcher=patch('fun_challenge.challenge_length',side_effect=lambda minimum:minimum)
+        patcher=patch('fun_challenge.challenge_length',side_effect=lambda minimum, **kwargs:minimum)
         self.length=patcher.start();self.addCleanup(patcher.stop)
+        preferences=patch('fun_challenge.read_challenge_preferences',return_value={'profile':'beginner','limit':50})
+        self.preferences=preferences.start();self.addCleanup(preferences.stop)
 
     def make_worker(self):
         value = worker()
@@ -272,17 +274,19 @@ class FunChallengeTests(unittest.TestCase):
         self.assertEqual(challenge_target('“四人赛”每次答对3道及以上积10分',10),10)
         self.assertEqual(challenge_target('',10),10)
 
-    def test_random_plan_is_chosen_once_and_fifteen_is_reachable(self):
-        self.length.side_effect=None;self.length.return_value=15
+    def test_random_plan_is_chosen_once_and_twenty_five_is_reachable(self):
+        self.length.side_effect=None;self.length.return_value=25
         value=self.make_worker();frames=[]
-        for count in range(16):frames.extend([page(count,f'题目{count}'),page(count,f'题目{count}')])
-        frames.append([dict(text='挑战结束',box=[200,600,300,60]),dict(text='本次答对15题',box=[200,730,260,40])])
+        for count in range(26):frames.extend([page(count,f'题目{count}'),page(count,f'题目{count}')])
+        frames.append([dict(text='挑战结束',box=[200,600,300,60]),dict(text='本次答对25题',box=[200,730,260,40])])
         value._fun_records=Mock(side_effect=frames)
+        value._open_fun_challenge.side_effect=lambda:setattr(self.preferences,'return_value',{'profile':'master','limit':100})
         value.funny_answer()
-        self.length.assert_called_once_with(10)
-        self.assertEqual(value._fun_metrics['planned_correct'],15)
-        self.assertEqual(value._fun_metrics['confirmed_correct'],15)
-        self.assertEqual(value._fun_metrics['model_calls'],16)
+        self.length.assert_called_once_with(10,profile='beginner',limit=50)
+        self.preferences.assert_called_once()
+        self.assertEqual(value._fun_metrics['planned_correct'],25)
+        self.assertEqual(value._fun_metrics['confirmed_correct'],25)
+        self.assertEqual(value._fun_metrics['model_calls'],26)
         self.assertEqual(value._fun_metrics['ending_answers_clicked'],1)
         value._exit_fun_challenge.assert_called_once()
 
@@ -353,17 +357,18 @@ class FunChallengeTests(unittest.TestCase):
 
 
 class ChallengeLengthTests(unittest.TestCase):
-    def test_three_to_nine_share_eighty_five_percent_of_the_weight(self):
+    def test_selected_profile_uses_normalized_weights_beyond_fifteen(self):
         with patch('fun_challenge.choices',return_value=[6]) as choose:
-            self.assertEqual(challenge_length(3),6)
+            self.assertEqual(challenge_length(3,profile='practiced'),6)
         counts=choose.call_args.args[0];weights=choose.call_args.kwargs['weights']
-        self.assertEqual(counts,list(range(3,16)))
-        self.assertAlmostEqual(sum(w for n,w in zip(counts,weights) if n<=9)/sum(weights),.85)
+        self.assertEqual(counts,list(range(3,51)))
+        self.assertAlmostEqual(sum(weights),1)
+        self.assertGreater(sum(w for n,w in zip(counts,weights) if n>=16),.07)
 
     def test_unknown_or_higher_platform_minimum_is_never_lowered(self):
         with patch('fun_challenge.choices',return_value=[12]) as choose:
             challenge_length(10)
-        self.assertEqual(choose.call_args.args[0],list(range(10,16)))
+        self.assertEqual(choose.call_args.args[0],list(range(10,51)))
 
 
 if __name__ == '__main__':

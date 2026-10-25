@@ -10,6 +10,36 @@ from comment_tasks import CommentJournal
 
 
 class VarietyTests(unittest.TestCase):
+    def test_natural_grounded_candidate_wins_before_lexical_novelty(self):
+        natural='把交流和被理解分开看，这个提醒挺实在'
+        stiff='人工智能的认知机制与人类情感具有区别。'
+        values=[dict(DRAFT,comment=stiff),dict(DRAFT,comment=natural)]
+        resolver=Mock(model='offline')
+        resolver._post.side_effect=[response(dict(candidates=values)),response(dict(reviews=[
+            dict(REVIEW,voice_score=2,specificity_score=4),
+            dict(REVIEW,voice_score=5,specificity_score=4)]))]
+        result=ContextCommentDrafts(resolver).generate(ARTICLE,recent_comments=[natural])
+        self.assertEqual(result['comment'],natural)
+        self.assertEqual(resolver._post.call_count,2)
+
+    def test_high_style_score_cannot_override_a_failed_fact_check(self):
+        values=[dict(DRAFT,comment='机器也会思考人生，这种感觉真奇妙！'),DRAFT]
+        resolver=Mock(model='offline')
+        resolver._post.side_effect=[response(dict(candidates=values)),response(dict(reviews=[
+            dict(REVIEW,grounded=False,voice_score=5,specificity_score=5),
+            dict(REVIEW,voice_score=3,specificity_score=3)]))]
+        self.assertEqual(ContextCommentDrafts(resolver).generate(ARTICLE)['comment'],DRAFT['comment'])
+
+    def test_style_demonstrations_are_reference_data_not_a_canned_selection(self):
+        resolver=Mock(model='offline');resolver._post.side_effect=[response(DRAFT),response(REVIEW)]
+        result=ContextCommentDrafts(resolver).generate(ARTICLE)
+        payload=json.loads(resolver._post.call_args_list[0].args[0]['messages'][1]['content'])
+        self.assertEqual(len(payload['style_examples']),3)
+        self.assertEqual(result['comment'],DRAFT['comment'])
+        self.assertNotIn(DRAFT['comment'],[row['reaction'] for row in payload['style_examples']])
+        for call in resolver._post.call_args_list:
+            self.assertIn('json',call.args[0]['messages'][0]['content'].lower())
+
     def test_selects_new_shape_without_rewriting_model_output_or_extra_calls(self):
         old='原来真实交流不能被机器代替，长知识了！'
         alternative='把交流和被理解分开看，这个提醒挺实在'

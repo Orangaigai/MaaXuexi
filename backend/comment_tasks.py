@@ -131,8 +131,8 @@ def comment_feed(records, *, allow_collapsed=False):
 
 
 def comment_text_key(text):
-    """OCR may change exclamation width; retain every word and punctuation mark."""
-    return re.sub(r'\s+', '', text).replace('!', '！')
+    """Normalize OCR punctuation width, retaining every word and mark."""
+    return re.sub(r'\s+', '', text).replace('!', '！').replace('?', '？')
 
 
 def comment_text_matches(rows, expected_text):

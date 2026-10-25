@@ -30,7 +30,7 @@ from fun_challenge import FunChallenge
 from daily_hints import question_from_records, exact_hint_choice, exact_hint_parts
 from daily_text import choice_inventory, choice_page, complete_hint, request_text
 from daily_gaps import all_options_from_gaps, count_choice_gaps
-from daily_choices import scan_to_hint, select_scrolled_choices, visible_options
+from daily_choices import scan_to_hint, select_scrolled_choices, visible_options, cached_options, hint_visible
 from screen_reading import read_screen
 from blank_hints import blank_context, hint_paragraph, exact_blank_hint
 from diagnostics import RunDiagnostics, observed, record_time
@@ -1364,9 +1364,12 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 return None
 
     def _get_options(self) -> dict[str, tuple[str, list]]:
-        """OCR扫描选择题选项文字。
-        流程：模板匹配A-F字母位置 → 对每个字母右侧区域(到x=635)执行OCR → 去噪(銀園等)。
-        返回 {字母: (文字, [x, y, w, h])} 映射。"""
+        """复用缓存帧补缺失标签；无缓存时沿用模板与逐项OCR扫描。"""
+        frame=getattr(self,'_screen_ocr_cache',None)
+        if (isinstance(frame,tuple) and len(frame)==2 and isinstance(frame[0],np.ndarray)
+                and frame[0].shape==(1280,720,3)
+                and callable(getattr(type(self.tasker),'post_recognition',None))):
+            return cached_options(self,frame[0],frame[1])
         options = {}
         found = {}
         for letter in ["A", "B", "C", "D", "E", "F"]:
@@ -1431,7 +1434,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
             inventory = (choice_inventory(records,frame[0],options,question_type)
                          if isinstance(frame,tuple) and len(frame)==2 else None)
             if inventory is None:
-                # Partial/image-only labels keep the existing template fallback.
+                # Preserve known labels; fill missing ones without moving the page.
                 found = self._get_options()
                 found.update(options)
                 options = found
@@ -1464,9 +1467,13 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 matches=result.nodes[0].recognition.filtered_results
                 boxes=[list(row.box) for row in matches if hasattr(row,'box')]
                 self._blank_context=blank_context(self._screen_records(),boxes) if len(boxes)==blank_num else None
-        img_list = [self.tasker.controller.post_screencap().wait().get()]
-        hint_found: TaskDetail = self.tasker.post_task("查找提示").wait().get()
-        if hint_found.status.failed:
+        cached=(question_type in ('单选题','多选题') and isinstance(frame,tuple)
+                and len(frame)==2 and isinstance(frame[0],np.ndarray) and frame[0].shape==(1280,720,3))
+        img_list = [frame[0].copy() if cached else self.tasker.controller.post_screencap().wait().get()]
+        hint_missing=not(question_type in ('单选题','多选题') and hint_visible(records))
+        if hint_missing:
+            hint_missing=self.tasker.post_task("查找提示").wait().get().status.failed
+        if hint_missing:
             self._daily_choice_page = None
             if question_type in ('单选题','多选题'):
                 self.send_log('每日答题：正在翻阅长题目，收集全部图片和选项')

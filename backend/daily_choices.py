@@ -1,6 +1,7 @@
 """Read long daily-choice pages without dropping image options between screens."""
 import re
 import numpy as np
+from maa.pipeline import JTemplateMatch, JOCR
 from task_support import TaskIncomplete
 
 
@@ -14,9 +15,40 @@ def visible_options(records):
     return options
 
 
+def hint_link(row):
+    return (re.fullmatch(r'[！!]?\s*查看提示',row['text'].strip()) is not None
+            and row['box'][0]>450 and 300<row['box'][1]<1220)
+
+
 def hint_visible(records):
-    return any('查看提示' in row['text'] and row['box'][0]>450
-               and 300<row['box'][1]<1220 for row in records)
+    return any(hint_link(row) for row in records)
+
+
+def cached_options(worker,image,records):
+    """Reuse OCR labels; probe missing letters once against that exact frame."""
+    options=visible_options(records)
+    for letter in 'ABCDEF':
+        if letter in options:continue
+        worker._check_active()
+        job=worker.tasker.post_recognition('TemplateMatch',JTemplateMatch(
+            template=[f'{letter}.png'],threshold=[.9]),image).wait().get()
+        if not job.status.succeeded or not job.nodes:continue
+        match=job.nodes[0].recognition
+        if not match.hit or match.best_result is None:continue
+        x,y,w,h=map(int,match.best_result.box)
+        if not (30<=x<=165 and 130<=y<1190 and 0<w<=90 and 0<h<=90):continue
+        roi=(x+w,y,635-x-w,h)
+        if roi[2]<=0:continue
+        result=worker.tasker.post_recognition('OCR',JOCR(roi=roi,only_rec=True),image).wait().get()
+        text=''
+        if result.status.succeeded and result.nodes:
+            best=result.nodes[0].recognition.best_result
+            text=best.text.strip() if best is not None else ''
+        for noise in ('銀園','銀','電','機'):
+            if text.endswith(noise):text=text[:-len(noise)].strip()
+        # Image options can have no OCR text; retain their labels and full frame.
+        options[letter]=(text,[x,y,w,h])
+    return dict(sorted(options.items()))
 
 
 def scan_to_hint(worker,records,image,options):
