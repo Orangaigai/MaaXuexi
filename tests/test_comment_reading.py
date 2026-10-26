@@ -51,7 +51,7 @@ class CommentReadingTests(unittest.TestCase):
         value._screen_records=Mock(return_value=[])
         value._comment_channel_menu=Mock(return_value=[])
         value._comment_label=Mock(return_value={})
-        value._comment_click=Mock();value._comment_life_feed=Mock(return_value=True)
+        value._comment_click=Mock();value._comment_life_feed=Mock(side_effect=[False]+[True]*30)
         value._comment_wait=Mock(side_effect=[[],[],FIRST])
         value.detect=Mock(return_value=([[25,300,600,130]],['article']))
         value._article_card_text=Mock(side_effect=titles)
@@ -174,6 +174,7 @@ class CommentReadingTests(unittest.TestCase):
 
     def preparation(self):
         value = worker(); value.ai_resolver = Mock()
+        value._comment_return_to_feed = Mock()
         value._comment_open_article = Mock(side_effect=[dict(ARTICLE, title=TITLE+str(i)) for i in range(3)])
         value._comment_read_full_article = Mock(side_effect=lambda article:article)
         value._screen_records = Mock(side_effect=TaskIncomplete('已到发布前身份核对'))

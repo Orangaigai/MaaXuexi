@@ -19,6 +19,8 @@ COMMENT_SCOPE = '科普中国/生活百科'
 POLICY_PATH = Path('config/comment-policy.json')
 JOURNAL_PATH = Path('config/comments.sqlite3')
 COMMENT_FEED_PAGES = 10
+COMMENT_ARTICLE_CHECKS = 8
+COMMENT_TEXT_CANDIDATES = 3
 
 
 def comment_policy():
@@ -345,16 +347,27 @@ class CommentTasks:
             and len([r for r in rs if r['text'].strip()=='科普中国'
                      and 180<=r['box'][1]<1100])==1)
 
+    def _comment_return_to_feed(self):
+        """One back from a verified article; do not navigate an unknown page."""
+        self._comment_article_bar()
+        if not getattr(self, '_comment_life_selected', False):
+            raise TaskIncomplete('未保留生活百科来源确认，未猜测返回其他列表')
+        self._comment_click(dict(box=[16, 40, 60, 65]))
+        self._comment_wait(self._comment_life_feed, timeout=12)
+
     def _comment_open_article(self):
-        self._comment_life_selected = False
         used_titles = CommentJournal().used_articles() + getattr(self, '_comment_rejected_titles', [])
-        self._reset_home()
-        records = self._comment_channel_menu(self._screen_records())
-        self._comment_click(self._comment_label(records, '科普中国', 180, 1100))
-        records = self._comment_wait(comment_feed)
-        self._comment_click(self._comment_label(records, '生活百科', 180, 250))
-        self._comment_wait(self._comment_life_feed)
-        self._sleep(1)
+        records = self._screen_records()
+        self._guard_verification(records, resume_when=self._comment_resume_ready)
+        if not self._comment_life_feed(records):
+            self._comment_life_selected = False
+            self._reset_home()
+            records = self._comment_channel_menu(self._screen_records())
+            self._comment_click(self._comment_label(records, '科普中国', 180, 1100))
+            records = self._comment_wait(comment_feed)
+            self._comment_click(self._comment_label(records, '生活百科', 180, 250))
+            self._comment_wait(self._comment_life_feed)
+            self._sleep(1)
         seen_pages = set()
         for page in range(COMMENT_FEED_PAGES):
             records = self._screen_records()
@@ -370,20 +383,27 @@ class CommentTasks:
                 titles.append(article_title_key(title))
                 if len(title) < 6 or any(s in title for s in ('直播', '专题', '订阅', '图集')):
                     continue
+                if article_title_key(title) in getattr(self, '_comment_rejected_cards', set()):
+                    continue
                 if comment_card_used(title, used_titles):
                     self.send_log('观点：跳过已有发表尝试或本轮审核未通过的文章')
                     continue
                 self._comment_click(dict(box=[int(box[0])+20, int(box[1])+30, min(350, int(box[2])-20), 50]))
                 records = self._comment_wait(lambda rs: comment_article(rs, require_body=False, image=self.tasker.controller.cached_image) is not None, timeout=45)
+                self._comment_last_card_title = title
                 return comment_article(records, require_body=False, image=self.tasker.controller.cached_image)
             signature = tuple(titles)
             if signature and signature in seen_pages:
                 break
             if signature:
                 seen_pages.add(signature)
-            if page < COMMENT_FEED_PAGES-1:
+            # Share the scroll budget across rejected articles in this attempt.
+            if page < COMMENT_FEED_PAGES-1 and getattr(self, '_comment_feed_scrolls', 0) < COMMENT_FEED_PAGES-1:
                 self.tasker.controller.post_swipe(350, 1090, 350, 550, 450).wait()
+                self._comment_feed_scrolls = getattr(self, '_comment_feed_scrolls', 0)+1
                 self._sleep(.7)
+            else:
+                break
         raise TaskUnavailable('生活百科本轮扫描未找到未使用且可确认正文的文章，未发表')
 
     def _comment_article_bar(self):
@@ -442,8 +462,10 @@ class CommentTasks:
                 raise TaskUnavailable('全文超过本模块长度范围，未截断后发布')
             if end:
                 full = dict(article, body=body)
+                if len(re.sub(r'\s+', '', body)) < 80:
+                    raise TaskUnavailable('正文不足80字，未按导语或不完整内容发表')
                 if not valid_article(full):
-                    raise TaskUnavailable('全文不足或不适合授权短评范围，未发布')
+                    raise TaskUnavailable('正文不适合已授权短评范围，未发布')
                 self._comment_article_top(article['title'], page)
                 return full
             if page < 11:
@@ -454,27 +476,61 @@ class CommentTasks:
 
     def _prepare_comment_draft(self):
         self._comment_rejected_titles = []
-        for candidate in range(3):
-            article = self._comment_open_article()
-            try:
-                article = self._comment_read_full_article(article)
-            except TaskUnavailable as error:
+        self._comment_rejected_cards = set()
+        # Reconfirm the source once per attempt; retain it only within this run.
+        self._comment_life_selected = False
+        self._comment_feed_scrolls = 0
+        used_articles = CommentJournal().used_articles()
+        inspected, generated, skipped = 0, 0, {}
+        draft = None
+        unavailable = ''
+        try:
+            while inspected < COMMENT_ARTICLE_CHECKS and generated < COMMENT_TEXT_CANDIDATES:
+                try:
+                    article = self._comment_open_article()
+                except TaskUnavailable as error:
+                    unavailable = str(error)
+                    break
+                inspected += 1
+                try:
+                    if comment_card_used(article['title'], used_articles):
+                        # Card OCR may differ from the full title (e.g. an em dash).
+                        # Verify again after opening, before reading or generation.
+                        card = getattr(self, '_comment_last_card_title', '')
+                        if card:
+                            self._comment_rejected_cards.add(article_title_key(card))
+                        raise TaskUnavailable('实际文章标题已有发表尝试，未重复评论')
+                    article = self._comment_read_full_article(article)
+                except TaskUnavailable as error:
+                    reason = str(error)
+                    skipped[reason] = skipped.get(reason, 0)+1
+                    self._comment_rejected_titles.append(article['title'])
+                    self.send_log(f'观点选文（{inspected}/{COMMENT_ARTICLE_CHECKS}）：{reason}；返回原列表换下一篇')
+                    self._comment_return_to_feed()
+                    continue
+                generated += 1
+                self.send_log(f'观点候选（{generated}/{COMMENT_TEXT_CANDIDATES}）：按正文生成8～28字口语短评，再独立复核')
+                drafts = ContextCommentDrafts(self.ai_resolver)
+                self._comment_draft_engine = drafts
+                draft = drafts.generate(article, recent_comments=CommentJournal().recent_texts())
+                self._check_active()
+                if draft is not None:
+                    break
+                if drafts.last_error not in ('draft_failed_local_rules', 'review_rejected'):
+                    raise TaskIncomplete('观点生成服务未正常返回：'+str(drafts.last_error)+'；未输入或发布')
                 self._comment_rejected_titles.append(article['title'])
-                self.send_log('观点：'+str(error)+'；换下一篇候选')
-                continue
-            self.send_log(f'观点候选（{candidate+1}/3）：按正文生成8～28字口语短评，再独立复核')
-            drafts = ContextCommentDrafts(self.ai_resolver)
-            self._comment_draft_engine = drafts
-            draft = drafts.generate(article, recent_comments=CommentJournal().recent_texts())
-            self._check_active()
-            if draft is not None:
-                break
-            if drafts.last_error not in ('draft_failed_local_rules', 'review_rejected'):
-                raise TaskIncomplete('观点生成服务未正常返回：'+str(drafts.last_error)+'；未输入或发布')
-            self._comment_rejected_titles.append(article['title'])
-            self.send_log('观点：该文章短评未通过规则或复核，未输入、未发布；跳过本篇')
-        else:
-            raise TaskUnavailable('三篇候选均未通过观点规则或复核，本轮跳过，未发布')
+                reason = '短评未通过规则或模型复核'
+                skipped[reason] = skipped.get(reason, 0)+1
+                self.send_log('观点：该文章短评未通过规则或复核，未输入、未发布；返回原列表换下一篇')
+                self._comment_return_to_feed()
+        finally:
+            report = getattr(self, 'run_report', None)
+            if report is not None:
+                report.task('发表观点', article_selection=dict(inspected=inspected, generated=generated, skipped=skipped))
+        if draft is None:
+            reasons = '；'.join(f'{reason}（{count}篇）' for reason, count in skipped.items())
+            raise TaskUnavailable(f'已检查{inspected}篇，实际生成短评{generated}篇；'
+                                  +(reasons or unavailable or '短评未通过规则或复核')+'；本轮未发表')
         records = self._screen_records()
         current_article = comment_article(records, require_body=False, image=self.tasker.controller.cached_image)
         report = getattr(self, 'run_report', None)
