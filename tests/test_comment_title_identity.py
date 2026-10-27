@@ -75,6 +75,7 @@ class ArticleTitleIdentityTests(unittest.TestCase):
         article=comment_article(first,require_body=False,image=self.image)
         result=value._comment_read_full_article(article)
         self.assertIn(last[0]['text'],result['body'])
+        value._comment_article_top(article['title'], value._comment_read_pages)
         self.assertEqual(value.tasker.controller.post_swipe.call_count,2)
         value.tasker.controller.post_input_text.assert_not_called()
 
@@ -89,7 +90,7 @@ class ArticleTitleIdentityTests(unittest.TestCase):
         result=value._comment_read_full_article(article)
         self.assertIn('正文介绍',result['body']);self.assertNotIn('责任编辑',result['body']);self.assertNotIn('视频字幕',result['body'])
         value.tasker.controller.post_swipe.assert_called_once()
-        value._comment_article_top.assert_called_once()
+        value._comment_article_top.assert_not_called()
 
     def test_editor_closure_alone_does_not_immediately_leave_the_article(self):
         value=worker();value.tasker.controller.cached_image=self.image

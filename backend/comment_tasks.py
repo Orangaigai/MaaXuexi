@@ -191,8 +191,7 @@ def comment_article(records, *, require_body=True, image=None):
            or not -8 <= right['box'][1]-left['box'][1]-left['box'][3] <= 40
            for left, right in zip(titles, titles[1:])):
         return None
-    body = ''.join(r['text'] for r in sorted(records, key=lambda r:r['box'][1])
-                   if 250 <= r['box'][1] < 1100 and r not in header)
+    body = ''.join(article_page(records, first=True)[0])
     article = dict(title=''.join(r['text'] for r in titles), body=body, scope=COMMENT_SCOPE)
     if not require_body:
         return article if 4 <= len(article['title']) <= 150 else None
@@ -430,6 +429,7 @@ class CommentTasks:
         raise TaskIncomplete('阅读全文后未重新确认同一篇标题，未输入短评')
 
     def _comment_read_full_article(self, article):
+        self._comment_read_pages = 0
         lines, prior = [], []
         body_closed = False
         for page in range(12):
@@ -462,11 +462,11 @@ class CommentTasks:
                 raise TaskUnavailable('全文超过本模块长度范围，未截断后发布')
             if end:
                 full = dict(article, body=body)
-                if len(re.sub(r'\s+', '', body)) < 80:
-                    raise TaskUnavailable('正文不足80字，未按导语或不完整内容发表')
+                if len(re.sub(r'\s+', '', body)) < 8:
+                    raise TaskUnavailable('正文没有足够可引用的文字，未发布')
                 if not valid_article(full):
                     raise TaskUnavailable('正文不适合已授权短评范围，未发布')
-                self._comment_article_top(article['title'], page)
+                self._comment_read_pages = page
                 return full
             if page < 11:
                 if not self.tasker.controller.post_swipe(350, 1100, 350, 500, 600).wait().succeeded:
@@ -483,6 +483,7 @@ class CommentTasks:
         used_articles = CommentJournal().used_articles()
         inspected, generated, skipped = 0, 0, {}
         draft = None
+        draft_checks = []
         unavailable = ''
         try:
             while inspected < COMMENT_ARTICLE_CHECKS and generated < COMMENT_TEXT_CANDIDATES:
@@ -514,8 +515,16 @@ class CommentTasks:
                 self._comment_draft_engine = drafts
                 draft = drafts.generate(article, recent_comments=CommentJournal().recent_texts())
                 self._check_active()
+                details = drafts.rejection_summary() if draft is None else '已通过'
+                details = details if isinstance(details, str) else str(drafts.last_error)
+                draft_checks.append(dict(title=article['title'], accepted=draft is not None,
+                                         reason=details, error_code=drafts.last_error if isinstance(drafts.last_error, str) else None))
+                report = getattr(self, 'run_report', None)
+                if report is not None:
+                    report.task('发表观点', draft_checks=draft_checks)
                 if draft is not None:
                     break
+                self.send_log('观点未采用：'+details+'；文章：'+article['title'])
                 if drafts.last_error not in ('draft_failed_local_rules', 'review_rejected'):
                     raise TaskIncomplete('观点生成服务未正常返回：'+str(drafts.last_error)+'；未输入或发布')
                 self._comment_rejected_titles.append(article['title'])
@@ -531,6 +540,8 @@ class CommentTasks:
             reasons = '；'.join(f'{reason}（{count}篇）' for reason, count in skipped.items())
             raise TaskUnavailable(f'已检查{inspected}篇，实际生成短评{generated}篇；'
                                   +(reasons or unavailable or '短评未通过规则或复核')+'；本轮未发表')
+        # Only approved text needs the return-to-title identity check.
+        self._comment_article_top(article['title'], getattr(self, '_comment_read_pages', 0))
         records = self._screen_records()
         current_article = comment_article(records, require_body=False, image=self.tasker.controller.cached_image)
         report = getattr(self, 'run_report', None)

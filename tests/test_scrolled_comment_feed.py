@@ -25,13 +25,16 @@ class ScrolledCommentFeedTests(unittest.TestCase):
         records=[r for r in records if not r['text'].startswith('来源')]
         self.assertIsNone(comment_article(records))
 
-    def test_article_ready_uses_same_complete_body_rule_as_generation(self):
+    def test_short_first_screen_can_be_a_candidate_without_proving_full_reading(self):
         records=json.loads((FIXTURES/'article-late.json').read_text('utf-8'))
         self.assertIsNotNone(comment_article(records))
         initial=[r for r in records if r['box'][1]<900]
         initial_body=''.join(r['text'] for r in initial if 250<=r['box'][1]<1080)
         self.assertGreaterEqual(len(initial_body),60)
-        self.assertIsNone(comment_article(initial))
+        self.assertIsNotNone(comment_article(initial))
+        source=next(r for r in records if r['text'].startswith('来源'))
+        header_only=[r for r in records if r['box'][1]<=source['box'][1]]
+        self.assertIsNone(comment_article(header_only))
 
     def value(self):
         value=worker()

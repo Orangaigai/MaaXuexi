@@ -25,6 +25,44 @@ function Invoke-MuMuCommand([string]$CliPath,[string]$Arguments) {
     } finally { $proc.Dispose() }
 }
 
+function Test-AllMuMuInstancesStopped($Info) {
+    if (!$Info) { return $false }
+    $properties=@($Info.PSObject.Properties)
+    if ($properties.Name -contains 'index') { $rows=@($Info) }
+    else {
+        if (!$properties.Count -or @($properties | Where-Object {$_.Name -notmatch '^\d+$'}).Count) { return $false }
+        $rows=@($properties | ForEach-Object {$_.Value})
+    }
+    foreach ($row in $rows) {
+        if ([string]$row.index -notmatch '^\d+$' -or $row.error_code -ne 0 -or
+            $row.is_process_started -isnot [bool] -or $row.is_android_started -isnot [bool] -or
+            $row.is_process_started -or $row.is_android_started) { return $false }
+    }
+    return $rows.Count -gt 0
+}
+
+function Close-IdleMuMuMain([string]$CliPath) {
+    try {
+        $all=Invoke-MuMuCommand $CliPath 'info -v all' | ConvertFrom-Json
+        if (!(Test-AllMuMuInstancesStopped $all)) {
+            Write-Host 'MuMu main application kept: another instance is running, or its state is not confirmed.'
+            return $false
+        }
+        # Recheck immediately before graceful close; never kill the shared host.
+        $all=Invoke-MuMuCommand $CliPath 'info -v all' | ConvertFrom-Json
+        if (!(Test-AllMuMuInstancesStopped $all)) {
+            Write-Host 'MuMu main application kept: instance state changed.'
+            return $false
+        }
+        $null=Invoke-MuMuCommand $CliPath 'main close'
+        Write-Host 'All MuMu instances stopped; requested graceful exit of the main application.'
+        return $true
+    } catch {
+        Write-Host 'Target instance stopped; shared MuMu main application kept because its state or graceful exit was not confirmed.'
+        return $false
+    }
+}
+
 try {
     $health=Invoke-RestMethod 'http://127.0.0.1:8000/api/status' -TimeoutSec 10
     if ($health.pid -ne $BackendPid -or $health.task_running -or $health.history_import.active -or $health.run_summary.run_id -ne $RunId -or
@@ -50,6 +88,7 @@ try {
         }
         if (!$stopped) { throw 'MuMu shutdown was not confirmed. Control page preserved.' }
     }
+    $null=Close-IdleMuMuMain $cli
     }
     if (!$KeepConsole) { Close-ControlBrowser $appRoot }
     Write-Host ('Daily points saved. Emulator closed: '+(!$KeepEmulator)+'; console closed: '+(!$KeepConsole)+'.')

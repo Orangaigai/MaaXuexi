@@ -13,9 +13,15 @@ def show_failure(log_path):
         None, '启动未成功，请查看日志：\n' + str(log_path), 'MaaXuexi 启动提示', 0x10)
 
 
-def run_launcher(root, *, daily=False, check_only=False, no_browser=False, notify=True):
+def automatic_ready(log):
+    from catchup_support import wait_for_automatic_start
+    return wait_for_automatic_start(log)
+
+
+def run_launcher(root, *, daily=False, catch_up=False, check_only=False, no_browser=False, notify=True):
     root = Path(root).resolve()
     sys.path.insert(0, str(root / 'backend'))
+    daily = daily or catch_up
     try:
         from local_preferences import read_preferences
         preferences = read_preferences(root / 'config/local-preferences.json')
@@ -42,6 +48,14 @@ def run_launcher(root, *, daily=False, check_only=False, no_browser=False, notif
     with log_path.open('xb') as log:
         log.write(f'MaaXuexi hidden launcher: {script.name}\r\n'.encode('utf-8'))
         log.flush()
+        if daily:
+            def progress(message):
+                log.write((datetime.now().isoformat(timespec='seconds')+' '+message+'\r\n').encode('utf-8'))
+                log.flush()
+            progress('登录/网络恢复补跑检查' if catch_up else '定时自动执行检查')
+            if not automatic_ready(progress):
+                progress('本次未提交任务；未打开控制台或模拟器')
+                return 0
         try:
             result = subprocess.run(command, cwd=root, stdin=subprocess.DEVNULL,
                                     stdout=log, stderr=subprocess.STDOUT,
@@ -61,6 +75,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--daily', action='store_true')
+    mode.add_argument('--catch-up', action='store_true', dest='catch_up')
     mode.add_argument('--check', action='store_true', dest='check_only')
     parser.add_argument('--no-browser', action='store_true')
     args = parser.parse_args()

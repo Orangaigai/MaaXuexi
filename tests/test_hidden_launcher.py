@@ -20,6 +20,22 @@ spec.loader.exec_module(launcher)
 
 @unittest.skipUnless(os.name == 'nt', 'Windows GUI launcher')
 class HiddenLauncherTests(unittest.TestCase):
+    def setUp(self):
+        ready = patch.object(launcher, 'automatic_ready', return_value=True)
+        self.ready = ready.start()
+        self.addCleanup(ready.stop)
+
+    def test_automatic_guard_skip_never_opens_browser_or_starts_daily_script(self):
+        self.ready.return_value = False
+        with tempfile.TemporaryDirectory() as temporary, patch.object(launcher.subprocess, 'run') as run:
+            self.assertEqual(launcher.run_launcher(temporary, catch_up=True), 0)
+        run.assert_not_called()
+
+    def test_manual_start_does_not_run_the_automatic_guard(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.object(launcher.subprocess, 'run', return_value=subprocess.CompletedProcess([],0)):
+            self.assertEqual(launcher.run_launcher(temporary), 0)
+        self.ready.assert_not_called()
+
     def test_daily_start_is_quiet_by_default_but_manual_start_still_opens_console(self):
         with tempfile.TemporaryDirectory() as temporary:
             with patch.object(launcher.subprocess,'run',return_value=subprocess.CompletedProcess([],0)) as run:

@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
 $taskName = 'MaaXuexi-Daily-0900'
 $appRoot = Split-Path -Parent $PSScriptRoot
+. (Join-Path $PSScriptRoot 'CatchUp-Task.ps1')
 
 function New-MaaDailyTrigger([string]$StartAt) {
     $chosen = [DateTimeOffset]::ParseExact($StartAt, 'yyyy-MM-ddTHH:mm:sszzz', [Globalization.CultureInfo]::InvariantCulture)
@@ -24,6 +25,8 @@ if ($Apply -or $Disable) {
     $logRoot = Join-Path $appRoot 'logs'
     $null = New-Item -ItemType Directory -Path $logRoot -Force
     Export-ScheduledTask -TaskName $taskName | Set-Content -LiteralPath (Join-Path $logRoot 'schedule-before-last-change.xml') -Encoding Unicode
+    # Prepare/validate the owned helper before changing the main trigger.
+    Sync-MaaCatchUpTask $appRoot ([bool]$Apply)
     if ($Disable) {
         $null = Disable-ScheduledTask -TaskName $taskName
     } else {

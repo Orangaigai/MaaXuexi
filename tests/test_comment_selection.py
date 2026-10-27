@@ -17,6 +17,7 @@ class CommentSelectionTests(unittest.TestCase):
                                                       for i in range(len(outcomes))])
         value._comment_read_full_article = Mock(side_effect=outcomes)
         value._comment_return_to_feed = Mock()
+        value._comment_article_top = Mock()
         value._screen_records = Mock(side_effect=TaskIncomplete('到达发布前身份核对'))
         return value
 

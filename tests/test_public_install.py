@@ -15,7 +15,7 @@ class PublicInstallTests(unittest.TestCase):
     def setup_copy(self):
         temp=tempfile.TemporaryDirectory(prefix='maa install 中文 ');self.addCleanup(temp.cleanup)
         root=Path(temp.name);(root/'scripts').mkdir();(root/'config').mkdir()
-        for name in ('Install-MaaXuexi.ps1','Create-Shortcut.ps1','ShellLink.cs','Launch-Hidden.py'):
+        for name in ('Install-MaaXuexi.ps1','Create-Shortcut.ps1','ShellLink.cs','Launch-Hidden.py','CatchUp-Task.ps1'):
             shutil.copy2(ROOT/'scripts'/name,root/'scripts'/name)
         (root/'page').mkdir();shutil.copy2(ROOT/'page/favicon.ico',root/'page/favicon.ico')
         for name in ('local-task-plan','comment-policy'):
@@ -53,20 +53,28 @@ class PublicInstallTests(unittest.TestCase):
     def test_first_install_creates_basics_and_a_disabled_owned_schedule(self):
         root,mumu=self.setup_copy()
         script=r'''
-function Get-ScheduledTask { return $null }
+function Get-ScheduledTask { param($TaskName) if($TaskName -eq 'MaaXuexi-Daily-0900'){return $global:installedMain}; return $global:installedHelper }
 function New-ScheduledTaskTrigger { param([switch]$Daily,$At); return [pscustomobject]@{StartBoundary=''} }
-function New-ScheduledTaskAction { param($Execute,$Argument,$WorkingDirectory); return @{exe=$Execute;args=$Argument;cwd=$WorkingDirectory} }
-function New-ScheduledTaskPrincipal { param($UserId,$LogonType,$RunLevel); return @{} }
+function New-ScheduledTaskAction { param($Execute,$Argument,$WorkingDirectory); return @{Execute=$Execute;Arguments=$Argument;WorkingDirectory=$WorkingDirectory} }
+function New-ScheduledTaskPrincipal { param($UserId,$LogonType,$RunLevel); return @{UserId=$UserId} }
 function New-ScheduledTaskSettingsSet { param([switch]$StartWhenAvailable,$MultipleInstances,[switch]$AllowStartIfOnBatteries,[switch]$DontStopIfGoingOnBatteries); return [pscustomobject]@{Enabled=$true} }
 function Register-ScheduledTask {
- param($TaskName,$Action,$Trigger,$Principal,$Settings)
+ param($TaskName,$Action,$Trigger,$Principal,$Settings,$Xml,[switch]$Force)
+ if($TaskName -eq 'MaaXuexi-CatchUp'){
+  [xml]$doc=$Xml
+  if($doc.Task.Settings.Enabled -ne 'false'){throw 'Catch-up must also be disabled'}
+  $global:installedHelper=@{Description='MaaXuexi immediate catch-up v1';State='Disabled';Actions=@(@{Execute=$doc.Task.Actions.Exec.Command;Arguments=$doc.Task.Actions.Exec.Arguments;WorkingDirectory=$doc.Task.Actions.Exec.WorkingDirectory})}
+  Write-Host 'TEST_DISABLED_CATCHUP';return
+ }
  if($TaskName -ne 'MaaXuexi-Daily-0900' -or $Settings.Enabled){throw 'Task must be disabled'}
- if(!$Action.args.EndsWith(' --daily') -or !$Trigger.StartBoundary.EndsWith('+08:00')){throw 'Wrong job'}
+ if(!$Action.Arguments.EndsWith(' --daily') -or !$Trigger.StartBoundary.EndsWith('+08:00')){throw 'Wrong job'}
+ $global:installedMain=@{Actions=@($Action);Principal=$Principal;State='Disabled'}
  Write-Host 'TEST_DISABLED_SCHEDULE'
 }
 '''
         result=self.run_install(root,mumu,script,False)
         self.assertEqual(result.returncode,0,result.stderr+result.stdout);self.assertIn('TEST_DISABLED_SCHEDULE',result.stdout)
+        self.assertIn('TEST_DISABLED_CATCHUP',result.stdout)
         plan=json.loads((root/'config/local-task-plan.json').read_text('utf-8-sig'))
         self.assertEqual(plan['tasklist'],['登录','选读文章','视听学习','本地频道'])
         self.assertFalse(json.loads((root/'config/comment-policy.json').read_text('utf-8-sig'))['enabled'])

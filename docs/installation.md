@@ -60,6 +60,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-MaaXue
 
 `-SkipSchedule` 仅用于不注册计划任务的开发/隔离安装；`-SkipDependencies` 仅用于依赖已安装后的本地检查。跳过计划注册时，不把控制台定时功能记为已配置。
 
+计划包含 `MaaXuexi-Daily-0900` 和用于登录、联网恢复、唤醒检查的 `MaaXuexi-CatchUp`，都使用当前安装目录和交互登录用户，不保存 Windows 密码。首次安装均保持关闭，启用自动执行后同步启用；手动模式同步关闭。它们复用同一套每日去重，不会叠加执行。更新已有安装后，在设置中重新保存一次定时即可安装补跑入口，原时间段和已保存清单保留；同名任务属于其他安装时会拒绝覆盖。
+
 ## 启动快捷方式与图标
 
 安装时会在项目根目录生成 **MaaXuexi.lnk**，可以复制到桌面使用。它指向本安装目录的 `pythonw.exe` 和原有启动器，不弹出启动终端，也不改变执行、定时或窗口偏好。

@@ -58,6 +58,7 @@ try {
     }
 
     if (!$SkipSchedule) {
+        . (Join-Path $PSScriptRoot 'CatchUp-Task.ps1')
         $taskName = 'MaaXuexi-Daily-0900'
         $expectedExe = Join-Path $appRoot '.venv\Scripts\pythonw.exe'
         $expectedArgs = '"'+(Join-Path $appRoot 'scripts\Launch-Hidden.py')+'" --daily'
@@ -81,6 +82,8 @@ try {
             $null = Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings
             Write-Host 'Schedule registered disabled. Enable it in the console when ready.'
         }
+        $installed = Get-ScheduledTask -TaskName $taskName -ErrorAction Stop
+        Sync-MaaCatchUpTask $appRoot ($installed.State.ToString() -ne 'Disabled')
     }
     & (Join-Path $PSScriptRoot 'Create-Shortcut.ps1')
     Write-Host 'Installation complete. Existing settings and keys were preserved.'

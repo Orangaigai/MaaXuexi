@@ -112,7 +112,8 @@ class CommentReadingTests(unittest.TestCase):
         self.assertIn(LAST[1]['text'], full['body'])
         self.assertEqual(full['body'].count(LAST[0]['text']), 1)
         self.assertNotIn('责任编辑', full['body'])
-        value._comment_article_top.assert_called_once_with(TITLE, 1)
+        value._comment_article_top.assert_not_called()
+        self.assertEqual(value._comment_read_pages, 1)
         value.tasker.controller.post_swipe.assert_called_once_with(350, 1100, 350, 500, 600)
         value.tasker.controller.post_input_text.assert_not_called()
 
@@ -175,6 +176,7 @@ class CommentReadingTests(unittest.TestCase):
     def preparation(self):
         value = worker(); value.ai_resolver = Mock()
         value._comment_return_to_feed = Mock()
+        value._comment_article_top = Mock()
         value._comment_open_article = Mock(side_effect=[dict(ARTICLE, title=TITLE+str(i)) for i in range(3)])
         value._comment_read_full_article = Mock(side_effect=lambda article:article)
         value._screen_records = Mock(side_effect=TaskIncomplete('已到发布前身份核对'))
@@ -189,6 +191,7 @@ class CommentReadingTests(unittest.TestCase):
                 value._prepare_comment_draft()
         self.assertEqual(value._comment_rejected_titles, [TITLE+'0'])
         self.assertEqual(value._comment_open_article.call_count, 2)
+        value._comment_article_top.assert_called_once_with(TITLE+'1', 0)
         value.tasker.controller.post_input_text.assert_not_called()
         value.tasker.controller.post_click.assert_not_called()
 
@@ -200,6 +203,7 @@ class CommentReadingTests(unittest.TestCase):
                 value._prepare_comment_draft()
         self.assertEqual(rejected.generate.call_count, 3)
         value._screen_records.assert_not_called()
+        value._comment_article_top.assert_not_called()
         value.tasker.controller.post_input_text.assert_not_called()
 
     def test_model_service_failure_does_not_generate_again_on_another_article(self):

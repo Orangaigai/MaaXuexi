@@ -14,6 +14,7 @@ STYLE_EXAMPLES = (
 RULES = (
     '为所附科普/生活文章写三条简短的读者评论候选，只输出JSON。'
     '【内容】完整读正文，从本篇挑一个让人想接话的细节，写刚看完的自然反应。'
+    '完整短文和视频文字简介同样可以评论，不以字数少为由跳过；关键是有具体信息可依据。'
     '可以是惊喜、欣赏、觉得有趣或弄明白一件事，不必提出深刻观点。'
     '不要把正文结论压缩复述后统一加“很有用/感谢科普”；不写摘要、打分或升华。'
     '三条在角度、句式和长度上有区别，不只换同义词，也不机械轮换固定风格。'
@@ -30,7 +31,7 @@ RULES = (
     '医疗内容只评价解释、证据和适用边界，不判断病情、预后、治疗、预防效果或某行为是否安全。'
     '不写处理步骤、剂量、时长、保证效果，不按谐音或字面曲解科学词。'
     '不写链接、数字、emoji或称谓；英文仅允许正文已有的常见缩写AI。'
-    '没有合适细节、正文不足或无法遵守边界时跳过。'
+    '只有标题、观看引导、加载提示、没有具体信息或无法遵守边界时跳过。'
     '输出格式：{"candidates":[{"skip":false,"comment":"本篇新写的短评","evidence":"正文连续原文"}]}。'
     'candidates必须含三条，不适合时为[]；不要输出解释。'
 )
@@ -64,7 +65,7 @@ def normalize(value):
 def valid_article(article):
     return (isinstance(article, dict) and article.get('scope') == '科普中国/生活百科'
             and isinstance(article.get('title'), str) and 4 <= len(article['title']) <= 150
-            and isinstance(article.get('body'), str) and 80 <= len(normalize(article['body'])) <= 4000
+            and isinstance(article.get('body'), str) and 8 <= len(normalize(article['body'])) <= 4000
             and not SENSITIVE_SOURCE.search(article['title']+article['body']))
 
 
@@ -145,6 +146,43 @@ class ContextCommentDrafts:
         self.last_review = None
         self.last_candidates = []
         self.last_reviews = None
+
+    def rejection_summary(self):
+        """Explain the existing verdict; never changes approval or outputs raw drafts."""
+        if self.last_error == 'draft_failed_local_rules':
+            reasons = set()
+            for raw in self.last_candidates:
+                if not isinstance(raw, dict) or raw.get('skip') is not False:
+                    reasons.add('模型主动跳过'); continue
+                text = raw.get('comment')
+                if not valid_comment_text(text):
+                    if not isinstance(text, str) or not 8 <= len(re.findall(r'[\u4e00-\u9fff]', text)) <= 28:
+                        reasons.add('短评字数不符')
+                    elif DISALLOWED_COMMENT.search(text):
+                        reasons.add('短评用词越过边界')
+                    else:
+                        reasons.add('短评句式或标点不符')
+                else:
+                    reasons.add('短评依据不符合原文要求')
+            return '；'.join(sorted(reasons)) or '候选结构或数量不符合要求'
+        if self.last_error == 'review_rejected':
+            value = self.last_reviews
+            reviews = value.get('reviews', [value]) if isinstance(value, dict) else []
+            labels = dict(grounded='事实依据', topic_related='贴合主题', neutral='表达中性',
+                          within_scope='授权范围', natural='自然语气', specific='具体内容')
+            if not isinstance(reviews, list) or not reviews:
+                return '模型复核结果格式不完整'
+            failures = []
+            for index, review in enumerate(reviews, 1):
+                if not isinstance(review, dict) or any(type(review.get(key)) is not bool for key in labels):
+                    failures.append(f'候选{index}：复核字段不完整'); continue
+                failed = [label for key, label in labels.items() if review[key] is not True]
+                reason = review.get('reason')
+                if failed:
+                    failures.append(f'候选{index}：'+ '、'.join(failed)+
+                                    ('（'+reason[:60]+'）' if isinstance(reason, str) and reason else ''))
+            return '；'.join(failures) or '模型复核结构与候选数量不符'
+        return '观点服务未正常返回：'+str(self.last_error)
 
     def _ask(self, system, payload, *, temperature=0):
         self.request_count += 1
