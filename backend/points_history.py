@@ -114,6 +114,8 @@ class PointsHistory(LedgerStore):
     def record_run(self, report):
         if not isinstance(report, dict) or report.get('status') not in STATES:
             return False
+        if report.get('acceptance_test'):
+            return False
         run_id, started = report.get('run_id'), report.get('started_at')
         tasks = report.get('tasks')
         if not isinstance(run_id, str) or not re.fullmatch(r'[a-zA-Z0-9_-]{1,80}', run_id) or not isinstance(tasks, dict):

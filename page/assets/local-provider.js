@@ -57,7 +57,7 @@
     const run=health?.run_summary||lastRun,rows=names.filter(name=>run?.tasks?.[name]).map(name=>run.tasks[name]);
     const confirmed=rows.filter(row=>['verified','skipped_full','credited','skipped_mode'].includes(row.state)).length;
     $('runProgressBlock').hidden=!rows.length;
-    $('runProgressLabel').textContent=health?'本轮进度':'上次确认的进度';
+    $('runProgressLabel').textContent=run?.acceptance_test?'验收进度':health?'本轮进度':'上次确认的进度';
     $('runProgress').max=Math.max(1,rows.length);$('runProgress').value=confirmed;
     $('runProgress').setAttribute('aria-valuetext',`已确认 ${confirmed} 项，共 ${rows.length} 项`);
     $('runProgressCount').textContent=`${confirmed} / ${rows.length} 项已确认`;
@@ -201,6 +201,7 @@
       }
       else if(health.last_error||['failed','error'].includes(run?.status))text='任务未完成，请查看每日积分中的任务详情。';
       else if(['cancelled','stopped'].includes(run?.status))text='本轮已中止，可查看积分记录和任务详情。';
+      if(run?.acceptance_test)text='验收模式：'+text+' 今天的日常积分记录不受影响。';
       $('status').textContent=text;renderProvider();
       document.title=(health.history_import?.active?'[导入中] ':health.task_running?(health.paused?'[已暂停] ':'[运行中] '):health.can_continue?'[待补做] ':'')+'MaaXuexi · 任务控制台';
     }catch{if(ticket!==refreshRevision)return;health=null;$('status').textContent='后台暂未连接，正在等待恢复…';
