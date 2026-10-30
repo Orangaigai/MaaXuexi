@@ -8,6 +8,7 @@ import numpy as np
 from PIL import Image, ImageFilter
 
 from task_support import TaskIncomplete, TaskUnavailable, HumanRequired
+from answer_client import answer_failure
 from question_visual import visual_evidence, visual_identity
 from challenge_preferences import (CHALLENGE_LIMIT_DEFAULT, challenge_length_weights,
                                    challenge_profile_params, read_challenge_preferences)
@@ -584,7 +585,7 @@ class FunChallenge(FourPlayerQuiz):
                 continue
             if answer is None:
                 if highest < target:
-                    raise TaskIncomplete('趣味答题答案无法确定：'+str(self.ai_resolver.last_error))
+                    raise TaskIncomplete('趣味答题答案无法确定：'+str(answer_failure(self.ai_resolver)))
                 # The minimum is confirmed, but a timeout must not leave the
                 # round hanging. At most two ordinary choices; either may be
                 # correct. Only the app's result and score can confirm success.

@@ -12,6 +12,12 @@ from PIL import Image
 from question_visual import text_needs_image
 from timed_http import AnswerSession, RequestCancelled
 
+def answer_failure(resolver):
+    return {401:'DeepSeek 密钥无效，请到设置重新配置',402:'DeepSeek 余额不足，请充值后继续',
+            429:'DeepSeek 请求暂时受限，请稍后继续',500:'DeepSeek 服务暂时异常',
+            503:'DeepSeek 服务繁忙，请稍后继续'}.get(getattr(resolver,'last_http_status',None),
+            getattr(resolver,'last_error',None) or 'no_usable_answer')
+
 
 class AIResolver:
     def __init__(self, api_key, model, stop_requested=None):

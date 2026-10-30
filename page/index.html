@@ -4,10 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>MaaXuexi · 任务控制台</title>
-  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=local-20261027.1">
-  <link rel="icon" type="image/svg+xml" sizes="any" href="/assets/logo.svg?v=local-20261027.1">
-  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261027.1">
-  <link rel="stylesheet" href="/assets/console.css?v=local-20261027.1">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico?v=local-20261030.1">
+  <link rel="icon" type="image/svg+xml" sizes="any" href="/assets/logo.svg?v=local-20261030.1">
+  <link rel="stylesheet" href="/assets/ui-base.css?v=local-20261030.1">
+  <link rel="stylesheet" href="/assets/console.css?v=local-20261030.1">
+  <script defer src="/assets/service-health.js?v=local-20261030.1"></script>
 </head>
 <body>
 <main>
@@ -15,6 +16,7 @@
     <div class="brand"><img class="brand-mark" src="/assets/logo.svg" width="42" height="42" alt=""><div><h1>MaaXuexi <span>任务控制台</span></h1><p>执行任务，查看进度与每日积分。</p></div></div>
     <div class="header-actions"><nav aria-label="页面导航"><a href="#taskHeading">任务设置</a><a href="#pointsHeading">积分记录</a><a href="/local/settings" class="settings-link"><svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 3-.6 2.2-2 .9-2-.6-2 3.4 1.5 1.7v2.3L2.4 15l2 3.4 2-.6 2 .9L9 21h4l.6-2.3 2-.9 2 .6 2-3.4-1.5-2.1v-2.3l1.5-1.7-2-3.4-2 .6-2-.9L13 3Z"/><circle cx="11" cy="12" r="3"/></svg>设置</a></nav><span id="connection" class="badge connection-badge">连接中…</span></div>
   </header>
+  <section id="serviceHealth" class="service-health" aria-label="运行环境"><span class="health-title">运行环境</span><ul class="health-items"><li id="healthDeepseek" class="health-item" data-state="unknown"><i class="health-dot" aria-hidden="true"></i><span class="health-name">DeepSeek 余额</span><span class="health-value">—</span><a id="healthSetup" class="health-setup" href="/local/settings#serviceHeading" hidden>去设置</a></li><li id="healthNetwork" class="health-item" data-state="unknown"><i class="health-dot" aria-hidden="true"></i><span class="health-name">学习强国站点</span><span class="health-value">—</span></li><li id="healthDevice" class="health-item" data-state="unknown"><i class="health-dot" aria-hidden="true"></i><span class="health-name">模拟器连接</span><span class="health-value">—</span></li></ul><span class="health-tools"><button id="healthRefresh" class="text-button" type="button" aria-label="刷新运行环境">刷新</button><span id="healthStamp" class="health-stamp"></span></span></section>
   <div class="overview">
     <section class="card runtime-card" id="runtimeCard" aria-labelledby="runtimeHeading">
       <div class="section-heading"><h2 id="runtimeHeading"><span id="runtimeSymbol" class="status-mark" aria-hidden="true">·</span>运行状态 <span id="runtimeState" class="runtime-state">连接中</span></h2><span id="runMode" class="badge">读取执行方式…</span></div>

@@ -84,3 +84,11 @@
 | 日志、结果、运行截图 | 本机 `logs` 与 `config`；分享前检查并打码 |
 
 API 按实际 token 和当期价格计费，参见 [DeepSeek 官方价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)。项目没有固定包月费用，模型请求也不是免费的。基础任务、本机环境检查和离线回归不调用付费模型。
+
+## 控制台运行环境
+
+顶部显示 DeepSeek 余额、学习强国官网连接和模拟器连接，可手动刷新。余额由后端读取[官方余额接口](https://api-docs.deepseek.com/api/get-user-balance/)，不发送题目或调用模型；自动检查间隔约一分钟，浏览器隐藏时停止轮询。网络与余额失败分别展示，查不到不记成零。官网可达只表示电脑能连接官网，不能保证模拟器内每个网页都能加载。
+
+- 平台返回可用且余额不少于 1 元（美元账户为 0.20 美元）显示正常；低于此值只提醒，不禁止任务。这是本工具的提醒线，并非平台规定或能完成多少天的保证。
+- 零余额、平台明确不可用、密钥失效、查询失败分别提示，充值后点击刷新；API 402 的处理依据[官方错误码](https://api-docs.deepseek.com/quick_start/error_codes/)。
+- 参考 [OpenUsage](https://github.com/janekbaraniewski/openusage/blob/main/docs/site/docs/providers/deepseek.md) 和 [DSH 余额插件](https://github.com/kyya/dsh-deepseek-balance) 的后端缓存与状态指示思路，不引入其框架或依赖，密钥不发送到浏览器。

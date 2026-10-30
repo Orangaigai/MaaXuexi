@@ -22,6 +22,7 @@ from pydantic import BaseModel, SecretStr, ConfigDict, field_validator, StrictBo
 
 from key_store import key_configured, load_key, save_key
 from provider_support import MODEL, invalidate_validation, provider_metadata, test_connection
+from service_health import service_health
 from utils import MaaWorker
 from task_support import VERSION, read_report, ordered_tasks, ALIASES, OPTIONAL_TASKS, TaskIncomplete
 from comment_tasks import comment_policy
@@ -282,6 +283,19 @@ def post_settings(config: ConfigModel):
 @app.get('/api/local/provider')
 def get_provider():
     return provider_metadata()
+
+@app.get('/api/local/service-health')
+def get_service_health():
+    result = service_health()
+    connected = bool(app_state.worker and app_state.worker.connection_alive())
+    result['device'] = dict(state='ok' if connected else 'unknown',
+                            message='已连接' if connected else '未连接，执行时自动连接')
+    return result
+
+@app.post('/api/local/service-health/refresh')
+def refresh_service_health():
+    service_health(refresh=True)
+    return get_service_health()
 
 @app.get('/api/local/diagnostics')
 def local_diagnostics():

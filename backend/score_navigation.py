@@ -32,6 +32,8 @@ class ScoreNavigation:
             self._check_active()
             records = self._screen_records()
             self._guard_verification(records)
+            if daily_scene(records)=='network':
+                records = self._screen_records()
             if parse_score_rows(records):
                 return True
             if any('网络开小差' in row['text'] for row in records):
@@ -57,6 +59,8 @@ class ScoreNavigation:
             if result.status.succeeded and result.nodes:
                 records = [dict(text=x.text, box=list(x.box)) for x in result.nodes[0].recognition.all_results]
                 self._guard_verification(records)
+                if daily_scene(records)=='network':
+                    records = self._screen_records()
                 inventory.update({name:row["rules"] for name,row in visible_task_rows(records).items()})
                 current = parse_score_rows(records)
                 for name, score in current.items():
@@ -80,6 +84,8 @@ class ScoreNavigation:
         for step in range(7):
             self._check_active()
             self._guard_verification(records)
+            if daily_scene(records)=='network':
+                records = self._screen_records()
             if daily_scene(records) != 'score' or not self._app_in_foreground():
                 raise TaskIncomplete('积分列表回到起点时页面已改变，未继续滑动')
             texts={row['text'].strip() for row in records}
@@ -103,6 +109,8 @@ class ScoreNavigation:
     def _enter_learning_score(self):
         records=self._screen_records()
         self._guard_verification(records)
+        if daily_scene(records)=='network':
+            records = self._screen_records()
         scene=daily_scene(records)
         if scene=='score' and self._app_in_foreground():
             if not getattr(self,'_score_refresh_required',False):

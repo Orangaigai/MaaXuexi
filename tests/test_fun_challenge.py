@@ -302,19 +302,19 @@ class FunChallengeTests(unittest.TestCase):
         value._wait_fun_settlement.assert_called_once()
         value._exit_fun_challenge.assert_called_once()
 
-    def test_early_finish_does_not_claim_full_points_or_restart_the_round(self):
+    def test_early_finish_retries_three_rounds_without_claiming_full_points(self):
         import task_support
         value=self.make_worker();value._finish_existing_quiz=Mock()
         value.read_learning_score=Mock(return_value={'趣味答题':dict(value=0,maximum=10)})
         value._fun_records=Mock(side_effect=[page(0),page(0),
-            [dict(text='挑战结束',box=[200,600,300,60]),dict(text='本次答对0题',box=[200,730,260,40])]])
+            [dict(text='挑战结束',box=[200,600,300,60]),dict(text='本次答对0题',box=[200,730,260,40])]]*3)
         with tempfile.TemporaryDirectory() as folder,patch.object(task_support,'REPORT_PATH',Path(folder)/'run.json'),patch('utils.plyer.notification.notify'):
             value.task(['趣味答题'])
         report=value.run_report.snapshot()
         self.assertEqual(report['status'],'partial')
         self.assertEqual(report['tasks']['趣味答题']['after']['value'],0)
-        value.ai_resolver.resolve_fun_choice.assert_called_once()
-        value._open_fun_challenge.assert_called_once()
+        self.assertEqual(value.ai_resolver.resolve_fun_choice.call_count,3)
+        self.assertEqual(value._open_fun_challenge.call_count,3)
 
     def test_unlabeled_choice_contract_accepts_zero_and_rejects_invalid_indices(self):
         for answer,expected in [(0,0),(1,1),(True,None),(-1,None),(2,None),('0',None)]:

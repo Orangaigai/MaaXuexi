@@ -363,3 +363,24 @@ pre { max-height: 310px; overflow: auto; white-space: pre-wrap; overflow-wrap: a
 @media (prefers-reduced-motion: reduce) { .run-progress progress::-webkit-progress-value { transition: none; } }
 
 .runtime-card[data-state=paused], .runtime-card[data-state=pausing] { --progress-color: #8795a8; }
+
+/* Lightweight runtime-environment strip between the header and the overview cards. */
+.service-health { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 16px; margin: -12px 0 18px; font-size: 13px; }
+.health-title { color: var(--muted); font-size: 11px; }
+.health-items { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px; margin: 0; padding: 0; list-style: none; }
+.health-item { display: flex; align-items: center; gap: 6px; min-width: 0; color: #526780; }
+.health-dot { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: #7993b5; }
+.health-value { min-width: 0; max-width: 22em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.health-setup { flex: 0 0 auto; font-size: 11px; }
+.health-tools { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.health-stamp { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.health-item[data-state=ok] .health-dot { background: var(--green); }
+.health-item[data-state=low] .health-dot, .health-item[data-state=unconfigured] .health-dot { background: #bc812a; }
+.health-item[data-state=low] .health-value, .health-item[data-state=unconfigured] .health-value { color: var(--amber); }
+.health-item[data-state=empty] .health-dot, .health-item[data-state=error] .health-dot, .health-item[data-state=unavailable] .health-dot, .health-item[data-state=auth] .health-dot { background: #a44130; }
+.health-item[data-state=empty] .health-value, .health-item[data-state=error] .health-value, .health-item[data-state=unavailable] .health-value, .health-item[data-state=auth] .health-value { color: #a44130; }
+@media (max-width: 600px) {
+  .service-health { margin-top: 0; gap: 5px 12px; }
+  .health-items { gap: 5px 14px; }
+  .health-tools { margin-left: 0; }
+}

@@ -19,7 +19,7 @@ from maa.tasker import Tasker
 from maa.toolkit import Toolkit
 
 
-from answer_client import AIResolver
+from answer_client import AIResolver, answer_failure
 from task_support import ALIASES, RunReport, TaskCancelled, TaskIncomplete, TaskUnavailable, TaskSkipped, HumanRequired, is_complete, fun_first_round_credited, read_report, ordered_tasks
 from datetime import datetime
 from pathlib import Path
@@ -30,7 +30,7 @@ from fun_challenge import FunChallenge
 from daily_hints import question_from_records, exact_hint_choice, exact_hint_parts
 from daily_text import choice_inventory, choice_page, complete_hint, request_text
 from daily_gaps import all_options_from_gaps, count_choice_gaps
-from daily_choices import scan_to_hint, select_scrolled_choices, visible_options, cached_options, hint_visible
+from daily_choices import scan_to_hint, select_scrolled_choices, visible_options, cached_options, hint_visible, hint_link
 from screen_reading import read_screen
 from blank_hints import blank_context, hint_paragraph, exact_blank_hint
 from diagnostics import RunDiagnostics, observed, record_time
@@ -523,6 +523,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 self._reset_home()
             else:
                 self._finish_existing_quiz()
+            self._web_page_retried = False
             before = self.read_learning_score(tasks)
             fun_rules = self.run_report.snapshot().get('visible_task_rules',{}).get('趣味答题','')
             for name in tasks:
@@ -544,6 +545,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                     self.run_report.task(current, acceptance_round=True, new_points_claimed=False)
                     self.send_log('每日答题实测：只运行一组新题，检验自动完成和返回；不申报新增积分')
                 self.run_report.task(current, state="running")
+                self._web_page_retried = False
                 self.run_report.update(phase="正在执行：" + current)
                 try:
                     if current in ("登录","选读文章","视听学习"):
@@ -586,6 +588,19 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                         self._reset_home()
                         self.watch_video(duration=max(80, min(200, remaining * 70)),alternate_feed=True)
                         after = self.read_learning_score([current]).get(current)
+                    if current == '趣味答题':
+                        for attempt in range(2,4):
+                            metrics = getattr(self,'_fun_metrics',{})
+                            if (after is None or is_complete(after) or metrics.get('mode')!='挑战答题'
+                                    or metrics.get('end_reason')!='answer_incorrect'
+                                    or metrics.get('scoring_minimum_met') is not False or not metrics.get('exited')):
+                                break
+                            self.send_log(f'单人挑战提前答错，核分仍未达标；自动补第{attempt}/3局，不重做其它任务')
+                            self.run_report.task(current,attempts=attempt)
+                            self.funny_answer()
+                            after = self.read_learning_score([current]).get(current)
+                        if self.run_report.snapshot()['tasks'][current].get('attempts')==3 and not is_complete(after):
+                            self.run_report.task(current,reason='趣味答题本轮已到三局仍未确认达标，停止新增作答；可稍后继续。')
                     self.run_report.task(current, after=after)
                     if current == '趣味答题' and fun_first_round_credited(after,fun_rules):
                         self.run_report.task(current,state='credited',
@@ -766,7 +781,24 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         for _ in range(3):
             self._check_active()
             if not self._captcha_present(records):
-                return
+                if records is None or daily_scene(records) != 'network':
+                    return
+                retry = [row['box'] for row in records if row['text'].strip()=='重试']
+                if getattr(self,'_web_page_retried',False) or len(retry)!=1:
+                    raise TaskIncomplete('页面网络错误，重试仍未恢复；本项保留结果，不循环刷新')
+                self._web_page_retried = True
+                x,y,w,h = retry[0]
+                if not self.tasker.controller.post_click(round(x+w/2),round(y+h/2)).wait().succeeded:
+                    raise TaskIncomplete('网页重试按钮未点击成功')
+                self.send_log('页面加载失败，点击一次重试，等待当前页面恢复')
+                for _ in range(24):
+                    self._sleep(.5)
+                    records = self._screen_records()
+                    scene = daily_scene(records)
+                    if scene not in ('network','loading') and (scene!='unknown' or
+                            any(200<row['box'][1]<1100 for row in records)):
+                        break
+                continue
             self._wait_for_owner("平台访问验证：请在模拟器内本人完成", resume_when=resume_when)
             records = None
         raise TaskIncomplete("平台验证仍未完成，停止当前操作")
@@ -1502,11 +1534,22 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         hint_open = self.tasker.post_task("查看提示", {
             "查看提示": {"next":["本机提示就绪"]},
             "本机提示就绪": {"recognition":"TemplateMatch","template":"关闭提示.png",
-                "roi":[635,429,52,54],"threshold":.9,"action":"DoNothing",
+                "roi":[580,120,140,1050],"threshold":.9,"action":"DoNothing",
                 "timeout":2500,"rate_limit":100,"pre_delay":0,"post_delay":0}
         }).wait().get()
         if hint_open.status.failed:
-            raise TaskIncomplete("Quiz hint was not opened")
+            records = self._screen_records()
+            self._guard_verification(records)
+            links = [row['box'] for row in records if hint_link(row)]
+            if len(links)==1 and not any(row['text'].strip()=='提示' for row in records):
+                x,y,w,h = links[0]
+                self.send_log('提示按钮模板未匹配，改用当前文字位置打开')
+                self.tasker.controller.post_click(round(x+w/2),round(y+h/2)).wait()
+            hint_open = self.tasker.post_task('本机提示就绪',{'本机提示就绪':{
+                'recognition':'TemplateMatch','template':'关闭提示.png','roi':[580,120,140,1050],
+                'threshold':.9,'action':'DoNothing','timeout':2500,'rate_limit':100}}).wait().get()
+            if hint_open.status.failed:
+                raise TaskIncomplete('提示未能打开或加载完成，未猜测答案；本题保留待续做')
         img_list.append(self.tasker.controller.post_screencap().wait().get())
         red_texts = []
         if self.fast_answer or question_type in ('填空题','点选填空题','单选题','多选题'):
@@ -1523,7 +1566,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
                 self._daily_choice_text=request_text(self._daily_choice_page,hint)
                 # Preserve the same full hint frame if text completeness fails.
                 img_list[-1]=frame[0].copy()
-        hint_close = self.tasker.post_task("关闭提示").wait().get()
+        hint_close = self.tasker.post_task("关闭提示",{'关闭提示':{'roi':[580,120,140,1050]}}).wait().get()
         if hint_close.status.failed:
             raise TaskIncomplete("Quiz hint was not closed")
         return img_list, options, red_texts, blank_num
@@ -1593,7 +1636,7 @@ class MaaWorker(FunChallenge, HomeNavigation, ContentTasks, ScoreNavigation, Sub
         else:
             answer = None
         if answer is None:
-            reason = getattr(self.ai_resolver, 'last_error', None) or 'no_usable_answer'
+            reason = answer_failure(self.ai_resolver)
             raise TaskIncomplete(f'{question_type}未获得可靠答案（{reason}），未提交；已停止此项，不无限等待人工操作')
         return answer, False
 
