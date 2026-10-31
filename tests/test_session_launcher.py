@@ -28,17 +28,45 @@ $node=$ast.Find({{param($n) $n -is [Management.Automation.Language.FunctionDefin
 Invoke-Expression $node.Extent.Text
 '''
 
-    def test_current_completed_day_views_do_not_boot_emulator_but_daily_launch_does(self):
-        data=self.powershell(self.helper('scripts/Start-MaaXuexi.ps1','Test-ViewCompletedDay')+r'''
-$now=[DateTimeOffset]::UtcNow
-$health=@{task_running=$false;run_summary=@{status='completed';finished_at=$now.ToString('O')}}
-$Reconnect=$false;$view=Test-ViewCompletedDay $health
-$Reconnect=$true;$scheduled=Test-ViewCompletedDay $health
-$Reconnect=$false;$health.run_summary.finished_at=$now.AddDays(-1).ToString('O');$old=Test-ViewCompletedDay $health
-$health.run_summary.finished_at=$now.ToString('O');$health.run_summary.status='needs_human';$pending=Test-ViewCompletedDay $health
-@{view=$view;scheduled=$scheduled;old=$old;pending=$pending}|ConvertTo-Json -Compress
+    def test_console_open_preserves_device_until_explicit_idle_reconnect(self):
+        data=self.powershell(r'''
+$ErrorActionPreference='Stop'
+$tokens=$null;$errors=$null
+$ast=[Management.Automation.Language.Parser]::ParseFile((Join-Path $env:MAA_SESSION_ROOT 'scripts/Start-MaaXuexi.ps1'),[ref]$tokens,[ref]$errors)
+if($errors.Count){throw 'PowerShell syntax error'}
+# Execute the actual entry branches with side effects replaced, including its early return.
+$entry=@($ast.EndBlock.Statements | Where-Object {$_ -is [Management.Automation.Language.TryStatementAst]})[-1].Extent.Text.Replace('exit 0','return')
+$appRoot=$env:MAA_SESSION_ROOT
+function Get-InstalledBackendVersion { 'test' }
+function Get-RecordedProcesses { if($script:reuse){@{Id=1234}} }
+function Read-RecordedBackendState { $script:health }
+function Test-BackendPortOccupied { $false }
+function New-Item { param($ItemType,$Path,[switch]$Force) }
+function Test-Path { param($LiteralPath) $true }
+function Start-Process { param($FilePath,$ArgumentList,$WorkingDirectory,$WindowStyle,$RedirectStandardOutput,$RedirectStandardError,[switch]$PassThru) @{HasExited=$false;Id=1234} }
+function Save-ProcessRecords { param($Processes) }
+function Invoke-RestMethod { param($Uri,$TimeoutSec) $script:health }
+function Initialize-LocalSettings {}
+function Open-ControlPage { $script:opens++ }
+function Connect-ConfiguredEmulator { $script:connections++ }
+$rows=@()
+foreach($script:reuse in @($false,$true)){
+    foreach($Reconnect in @($false,$true)){
+        foreach($busy in @('idle','task','import')){
+            $script:health=@{status='running';backend='deepseek-local';local_version='test';
+                task_running=($busy -eq 'task');history_import=@{active=($busy -eq 'import')}}
+            $script:connections=0;$script:opens=0
+            & ([scriptblock]::Create($entry))
+            $rows+=@{reuse=$script:reuse;reconnect=$Reconnect;busy=$busy;connections=$script:connections;opens=$script:opens}
+        }
+    }
+}
+ConvertTo-Json -InputObject $rows -Compress
 ''')
-        self.assertEqual(data,dict(view=True,scheduled=False,old=False,pending=False))
+        for row in data:
+            with self.subTest(**row):
+                self.assertEqual(row['opens'],1)
+                self.assertEqual(row['connections'],int(row['reconnect'] and row['busy']=='idle'))
 
     def test_disk_fallback_accepts_only_matching_current_success(self):
         with tempfile.TemporaryDirectory() as folder:

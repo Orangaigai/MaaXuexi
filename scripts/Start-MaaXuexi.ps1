@@ -10,15 +10,6 @@ function Open-ControlPage {
     catch { Write-Host 'Could not open the browser. Progress page: http://127.0.0.1:8000/' }
 }
 
-function Test-ViewCompletedDay($Health) {
-    if ($Reconnect -or $Health.task_running -or $Health.run_summary.status -ne 'completed') { return $false }
-    try {
-        $finished=[DateTimeOffset]::Parse([string]$Health.run_summary.finished_at)
-        $beijing=[TimeSpan]::FromHours(8)
-        return $finished.ToOffset($beijing).Date -eq [DateTimeOffset]::UtcNow.ToOffset($beijing).Date
-    } catch { return $false }
-}
-
 function Get-InstalledBackendVersion {
     $source = [IO.File]::ReadAllText((Join-Path $appRoot 'backend\task_support.py'))
     $match = [regex]::Match($source, '(?m)^VERSION\s*=\s*"([^"\r\n]+)"\s*$')
@@ -286,7 +277,7 @@ try {
                 Wait-BackendPortFree
             } else {
                 Open-ControlPage
-                if (!$health.task_running -and !$health.history_import.active -and !(Test-ViewCompletedDay $health)) { Connect-ConfiguredEmulator }
+                if ($Reconnect -and !$health.task_running -and !$health.history_import.active) { Connect-ConfiguredEmulator }
                 Write-Host 'MaaXuexi is already running: http://127.0.0.1:8000/'
                 if (($health.task_running -or $health.history_import.active) -and $health.local_version -ne $expectedLocalVersion) { Write-Host 'The active task is preserved; the update will load on the next idle startup.' }
                 exit 0
@@ -323,7 +314,7 @@ try {
     Initialize-LocalSettings
     Write-Host 'MaaXuexi is ready: http://127.0.0.1:8000/'
     Open-ControlPage
-    if (!(Test-ViewCompletedDay $health)) { Connect-ConfiguredEmulator }
+    if ($Reconnect -and !$health.task_running -and !$health.history_import.active) { Connect-ConfiguredEmulator }
     Write-Host 'Logs are saved in the logs folder. No learning task has been started.'
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red

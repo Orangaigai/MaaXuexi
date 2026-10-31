@@ -40,7 +40,7 @@ D:\Apps\MuMuPlayer
 
 安装不启动学习、不连接 DeepSeek、不自动登录，也不覆盖已有密钥、任务或计划。已有同目录计划会保留其启用状态与时间。
 
-看到 `Installation complete` 后，双击蓝色图标的 **MaaXuexi.lnk**（也可使用 **启动MaaXuexi.cmd**）。启动会准备模拟器和浏览器；在网页点击“立即执行”才开始手动任务。第一次建议先用基础任务。
+看到 `Installation complete` 后，双击蓝色图标的 **MaaXuexi.lnk**（也可使用 **启动MaaXuexi.cmd**）。启动只打开控制台；在网页点击“立即执行”后才准备模拟器并开始手动任务。第一次建议先用基础任务。
 
 ## 用命令安装
 
