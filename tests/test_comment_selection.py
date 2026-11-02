@@ -118,7 +118,31 @@ class CommentSelectionTests(unittest.TestCase):
         value._comment_click = Mock(); value._comment_wait = Mock()
         value._comment_return_to_feed()
         value._comment_click.assert_called_once()
-        value._comment_wait.assert_called_once_with(value._comment_life_feed, timeout=12)
+        value._comment_wait.assert_called_once_with(value._comment_life_feed, timeout=12, required=False)
+
+    def test_unconfirmed_return_reenters_source_before_opening_next_article(self):
+        value = reading.CommentReadingTests().feed_worker([reading.TITLE])
+        value._comment_article_bar = Mock(); value._comment_life_selected = True
+        value._comment_wait.side_effect = [None, [], [], reading.FIRST]
+        value._comment_rejected_titles = ['刚才未读完的另一篇长文章']
+        value._comment_return_to_feed()
+        self.assertFalse(value._comment_life_selected)
+        with patch('comment_tasks.CommentJournal') as journal:
+            journal.return_value.used_articles.return_value = []
+            self.assertEqual(value._comment_open_article()['title'], reading.TITLE)
+        value._reset_home.assert_called_once()
+        value._comment_channel_menu.assert_called_once()
+        self.assertEqual(value._comment_rejected_titles, ['刚才未读完的另一篇长文章'])
+        value.tasker.controller.post_input_text.assert_not_called()
+
+    def test_verification_during_return_does_not_trigger_channel_recovery(self):
+        value = worker(); value._comment_article_bar = Mock(); value._comment_life_selected = True
+        value._comment_click = Mock(); value._reset_home = Mock()
+        value._comment_wait = Mock(side_effect=comment_tasks.HumanRequired('本人验证未完成'))
+        with self.assertRaises(comment_tasks.HumanRequired):
+            value._comment_return_to_feed()
+        self.assertTrue(value._comment_life_selected)
+        value._reset_home.assert_not_called()
 
     def test_real_video_poster_is_excluded_from_collected_written_description(self):
         root = Path(__file__).parent/'fixtures/comment-media-20261026'

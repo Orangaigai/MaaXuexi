@@ -347,12 +347,14 @@ class CommentTasks:
                      and 180<=r['box'][1]<1100])==1)
 
     def _comment_return_to_feed(self):
-        """One back from a verified article; do not navigate an unknown page."""
+        """Reuse the source list, or let the next selection reenter its channel."""
         self._comment_article_bar()
         if not getattr(self, '_comment_life_selected', False):
             raise TaskIncomplete('未保留生活百科来源确认，未猜测返回其他列表')
         self._comment_click(dict(box=[16, 40, 60, 65]))
-        self._comment_wait(self._comment_life_feed, timeout=12)
+        if self._comment_wait(self._comment_life_feed, timeout=12, required=False) is None:
+            self._comment_life_selected = False
+            self.send_log('观点：返回后未确认原列表，下次选文重新进入科普中国生活百科')
 
     def _comment_open_article(self):
         used_titles = CommentJournal().used_articles() + getattr(self, '_comment_rejected_titles', [])
