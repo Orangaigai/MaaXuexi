@@ -525,7 +525,7 @@ class CommentTasks:
                     reject_article(article['title'])
                     continue
                 generated += 1
-                self.send_log(f'观点候选（{generated}/{COMMENT_TEXT_CANDIDATES}）：按正文生成8～28字口语短评，再独立复核')
+                self.send_log(f'观点候选（{generated}/{COMMENT_TEXT_CANDIDATES}）：按正文生成8～28字短评，再独立复核')
                 drafts = ContextCommentDrafts(self.ai_resolver)
                 self._comment_draft_engine = drafts
                 draft = drafts.generate(article, recent_comments=CommentJournal().recent_texts())

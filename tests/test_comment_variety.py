@@ -10,6 +10,20 @@ from comment_tasks import CommentJournal
 
 
 class VarietyTests(unittest.TestCase):
+    def test_plain_reader_question_keeps_its_tone_without_casual_endings(self):
+        body='有些蚂蚁会沿路留下气味，同伴可以顺着气味找到食物，雨水可能让气味变淡。'
+        article=dict(ARTICLE,title='蚂蚁如何寻找食物',body=body)
+        good=dict(DRAFT,comment='雨水可能冲淡气味，蚂蚁会更难找到食物吗？',evidence=body)
+        casual=[dict(good,comment=text) for text in (
+            '顺着气味走，那下雨天蚂蚁会不会容易迷路呀？',
+            '蚂蚁靠气味找食物，这事儿还挺有意思。')]
+        resolver=Mock(model='offline')
+        resolver._post.side_effect=[response(dict(candidates=[*casual,good])),response(REVIEW)]
+        result=ContextCommentDrafts(resolver).generate(article)
+        self.assertEqual(result['comment'],good['comment'])
+        payload=json.loads(resolver._post.call_args.args[0]['messages'][1]['content'])
+        self.assertEqual([item['comment'] for item in payload['candidates']],[good['comment']])
+
     def test_natural_grounded_candidate_wins_before_lexical_novelty(self):
         natural='把交流和被理解分开看，这个提醒挺实在'
         stiff='人工智能的认知机制与人类情感具有区别。'
