@@ -30,6 +30,28 @@ class VarietyTests(unittest.TestCase):
             dict(REVIEW,voice_score=3,specificity_score=3)]))]
         self.assertEqual(ContextCommentDrafts(resolver).generate(ARTICLE)['comment'],DRAFT['comment'])
 
+    def test_title_praise_cannot_win_even_with_a_valid_body_quote(self):
+        body='终止高血压膳食是一种膳食模式，并不是某一种食物的名字。'
+        article=dict(ARTICLE,title='终止高血压膳食-DASH饮食',body=body)
+        good=dict(DRAFT,comment='名字像一道菜，原来讲的是一种吃法。',evidence=body)
+        bad=[dict(good,comment=comment) for comment in (
+            '中文叫终止高血压膳食，名字听着还挺有分量的。',
+            '中文叫终止高血压膳食，听着挺正式的。')]
+        resolver=Mock(model='offline')
+        resolver._post.side_effect=[response(dict(candidates=[*bad,good])),response(REVIEW)]
+        result=ContextCommentDrafts(resolver).generate(article)
+        self.assertEqual(result['comment'],good['comment'])
+        review=json.loads(resolver._post.call_args.args[0]['messages'][1]['content'])
+        self.assertEqual([item['comment'] for item in review['candidates']],[good['comment']])
+
+    def test_concrete_approved_candidate_wins_over_a_higher_voice_score(self):
+        generic=dict(DRAFT,comment='这个交流的提醒，读完还真挺有感触。')
+        resolver=Mock(model='offline')
+        resolver._post.side_effect=[response(dict(candidates=[generic,DRAFT])),response(dict(reviews=[
+            dict(REVIEW,voice_score=5,specificity_score=2),
+            dict(REVIEW,voice_score=4,specificity_score=5)]))]
+        self.assertEqual(ContextCommentDrafts(resolver).generate(ARTICLE)['comment'],DRAFT['comment'])
+
     def test_style_demonstrations_are_reference_data_not_a_canned_selection(self):
         resolver=Mock(model='offline');resolver._post.side_effect=[response(DRAFT),response(REVIEW)]
         result=ContextCommentDrafts(resolver).generate(ARTICLE)
@@ -64,6 +86,8 @@ class VarietyTests(unittest.TestCase):
             engine=ContextCommentDrafts(resolver)
             self.assertIsNone(engine.generate(ARTICLE))
             self.assertEqual(engine.request_count,1)
+            if candidates == []:
+                self.assertIn('当前正文不适合写短评',engine.rejection_summary())
 
     def test_history_is_bounded_and_sent_only_as_reference_data(self):
         resolver=Mock(model='offline');resolver._post.side_effect=[response(DRAFT),response(REVIEW)]

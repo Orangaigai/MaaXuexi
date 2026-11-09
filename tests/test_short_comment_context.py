@@ -23,6 +23,8 @@ class ShortCommentContextTests(unittest.TestCase):
         self.assertFalse(valid_article(article))
         article['body']='香蕉会释放乙烯，这种物质可以促进果实成熟。'
         self.assertIsNone(validate_draft(dict(skip=False,comment='植物里还有不少小奥秘，挺有意思！',evidence='香蕉可以改善睡眠'),article))
+        self.assertIsNone(validate_draft(dict(skip=False,comment='香蕉自己释放乙烯，难怪放几天就变黄了。',
+                                             evidence=article['body']),article))
 
     def test_short_preview_without_observed_end_is_not_used_for_publication(self):
         rows=reading.HEAD+[reading.row('植物的叶片运动也有值得观察的细节。',450)]
