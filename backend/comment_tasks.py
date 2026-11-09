@@ -113,6 +113,14 @@ def article_title_key(text):
     return re.sub(r'\W+', '', text)
 
 
+def same_article_title(expected, observed):
+    if article_title_key(expected) == article_title_key(observed):
+        return True
+    # Compare the observed separator as well as every word of the title.
+    separator = r'(?<=[\u4e00-\u9fff])\s*(?:一一|[-–—－]+)\s*(?=[A-Z]{2,}(?![A-Za-z]))'
+    return article_title_key(re.sub(separator, '_', expected)) == article_title_key(re.sub(separator, '_', observed))
+
+
 def comment_card_used(signature, titles):
     card = article_title_key(signature)
     keys = [article_title_key(title) for title in titles]
@@ -381,10 +389,11 @@ class CommentTasks:
                 if kind not in ('article', 'article_image') or not 250 <= box[1] < 1080:
                     continue
                 title = self._article_card_text(box)
-                titles.append(article_title_key(title))
+                key = article_title_key(title)
+                titles.append(key)
                 if len(title) < 6 or any(s in title for s in ('直播', '专题', '订阅', '图集')):
                     continue
-                if article_title_key(title) in getattr(self, '_comment_rejected_cards', set()):
+                if key in getattr(self, '_comment_rejected_cards', set()):
                     continue
                 if comment_card_used(title, used_titles):
                     self.send_log('观点：跳过已有发表尝试或本轮审核未通过的文章')
@@ -422,7 +431,7 @@ class CommentTasks:
             if verification_visible(records):
                 records = self._screen_records()
             current = comment_article(records, require_body=False, image=self.tasker.controller.cached_image)
-            if current and article_title_key(current['title']) == article_title_key(title):
+            if current and same_article_title(title, current['title']):
                 return
             self._comment_article_bar()
             if not self.tasker.controller.post_swipe(350, 350, 350, 1100, 600).wait().succeeded:
@@ -441,13 +450,14 @@ class CommentTasks:
                 records = self._screen_records()
             if page == 0:
                 current_article = comment_article(records, require_body=False, image=self.tasker.controller.cached_image)
-                if not current_article or article_title_key(current_article['title']) != article_title_key(article['title']):
+                if not current_article or not same_article_title(article['title'], current_article['title']):
                     report = getattr(self,'run_report',None)
                     if report is not None:
                         report.task('发表观点',article_identity=dict(stage='before_reading',expected=article['title'],
                                     observed=current_article['title'] if current_article else None))
-                    raise TaskIncomplete('全文阅读开始前文章标题未一致，未继续翻动；预期：'+article['title']+
-                                         '；当前：'+(current_article['title'] if current_article else '尚未识别'))
+                    if not current_article:
+                        raise TaskIncomplete('全文阅读开始前无法确认文章，未继续翻动')
+                    raise TaskUnavailable('全文阅读开始前两次识别的文章标题不一致')
             self._comment_article_bar()
             current, end = article_page(records, first=page == 0, body_closed=body_closed)
             if not body_closed:
@@ -487,6 +497,13 @@ class CommentTasks:
         draft = None
         draft_checks = []
         unavailable = ''
+        def reject_article(title):
+            self._comment_rejected_titles.append(title)
+            card = getattr(self, '_comment_last_card_title', '')
+            if card:
+                self._comment_rejected_cards.add(article_title_key(card))
+            self._comment_return_to_feed()
+
         try:
             while inspected < COMMENT_ARTICLE_CHECKS and generated < COMMENT_TEXT_CANDIDATES:
                 try:
@@ -499,17 +516,13 @@ class CommentTasks:
                     if comment_card_used(article['title'], used_articles):
                         # Card OCR may differ from the full title (e.g. an em dash).
                         # Verify again after opening, before reading or generation.
-                        card = getattr(self, '_comment_last_card_title', '')
-                        if card:
-                            self._comment_rejected_cards.add(article_title_key(card))
                         raise TaskUnavailable('实际文章标题已有发表尝试，未重复评论')
                     article = self._comment_read_full_article(article)
                 except TaskUnavailable as error:
                     reason = str(error)
                     skipped[reason] = skipped.get(reason, 0)+1
-                    self._comment_rejected_titles.append(article['title'])
                     self.send_log(f'观点选文（{inspected}/{COMMENT_ARTICLE_CHECKS}）：{reason}；返回原列表换下一篇')
-                    self._comment_return_to_feed()
+                    reject_article(article['title'])
                     continue
                 generated += 1
                 self.send_log(f'观点候选（{generated}/{COMMENT_TEXT_CANDIDATES}）：按正文生成8～28字口语短评，再独立复核')
@@ -528,12 +541,11 @@ class CommentTasks:
                     break
                 self.send_log('观点未采用：'+details+'；文章：'+article['title'])
                 if drafts.last_error not in ('draft_failed_local_rules', 'review_rejected'):
-                    raise TaskIncomplete('观点生成服务未正常返回：'+str(drafts.last_error)+'；未输入或发布')
-                self._comment_rejected_titles.append(article['title'])
+                    raise TaskIncomplete(details+'；未输入或发布')
                 reason = '短评未通过规则或模型复核'
                 skipped[reason] = skipped.get(reason, 0)+1
                 self.send_log('观点：该文章短评未通过规则或复核，未输入、未发布；返回原列表换下一篇')
-                self._comment_return_to_feed()
+                reject_article(article['title'])
         finally:
             report = getattr(self, 'run_report', None)
             if report is not None:
@@ -550,7 +562,7 @@ class CommentTasks:
         if report is not None:
             report.task('发表观点', article_identity=dict(expected=article['title'],
                         observed=current_article['title'] if current_article else None))
-        if current_article is None or article_title_key(current_article['title']) != article_title_key(article['title']):
+        if current_article is None or not same_article_title(article['title'], current_article['title']):
             diagnostic = getattr(self, 'diagnostics', None)
             if diagnostic is not None:
                 diagnostic.capture('comment-identity', records, self.tasker.controller.cached_image)
@@ -603,7 +615,7 @@ class CommentTasks:
                 stable=0
                 return False
             article=comment_article(records,require_body=False,image=self.tasker.controller.cached_image)
-            ordinary=(article is not None and article_title_key(article['title'])==article_title_key(expected_title))
+            ordinary=article is not None and same_article_title(expected_title, article['title'])
             ordinary=ordinary or home_ready(records) or self._comment_native_life_page(records)
             stable=stable+1 if ordinary else 0
             elapsed=time.monotonic()-started-max(0,getattr(self,'_paused_seconds',0)-initial_paused)

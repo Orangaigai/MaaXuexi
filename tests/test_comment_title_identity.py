@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 from PIL import Image
 from comment_reading import title_line_text, article_page
-from comment_tasks import comment_article, article_title_key
+from comment_tasks import comment_article, article_title_key, same_article_title
 from task_support import TaskIncomplete
 from test_optimization import worker
 
@@ -27,6 +27,13 @@ class ArticleTitleIdentityTests(unittest.TestCase):
         fixed=comment_article(before,require_body=False,image=self.image)
         self.assertEqual(article_title_key(fixed['title']),article_title_key(observed['title']))
         self.assertEqual(before,self.rows['before'])
+
+    def test_dash_diet_title_matches_only_the_observed_separator_variant(self):
+        expected='终止高血压膳食一一DASH饮食'
+        self.assertTrue(same_article_title(expected,'终止高血压膳食-DASH饮食'))
+        self.assertFalse(same_article_title(expected,'终止高血压膳食-DASH食谱'))
+        self.assertFalse(same_article_title(expected,'终止高血压膳食DASH饮食'))
+        self.assertFalse(same_article_title('把事实一一列举清楚','把事实-列举清楚'))
 
     def test_initial_fallback_font_and_final_font_both_match_the_same_heading(self):
         initial=self.image.copy()
@@ -141,7 +148,7 @@ class ArticleTitleIdentityTests(unittest.TestCase):
         value=worker();value.tasker.controller.cached_image=self.image
         value._screen_records=Mock(return_value=changed)
         original=comment_article(before,require_body=False,image=self.image)
-        with self.assertRaisesRegex(TaskIncomplete,'标题未一致'):
+        with self.assertRaisesRegex(TaskIncomplete,'标题不一致'):
             value._comment_read_full_article(original)
         value.tasker.controller.post_swipe.assert_not_called();value.tasker.controller.post_input_text.assert_not_called()
 

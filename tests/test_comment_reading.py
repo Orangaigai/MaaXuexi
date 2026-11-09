@@ -184,12 +184,14 @@ class CommentReadingTests(unittest.TestCase):
 
     def test_rejected_draft_moves_to_new_article_before_any_input(self):
         value = self.preparation()
+        value._comment_last_card_title = '原文章卡片的另一种识别结果'
         rejected = Mock(last_error='draft_failed_local_rules'); rejected.generate.return_value = None
         accepted = Mock(); accepted.generate.return_value = comments.DRAFT
         with patch('comment_tasks.ContextCommentDrafts', side_effect=[rejected, accepted]):
             with self.assertRaisesRegex(TaskIncomplete, '身份核对'):
                 value._prepare_comment_draft()
         self.assertEqual(value._comment_rejected_titles, [TITLE+'0'])
+        self.assertIn(comment_tasks.article_title_key(value._comment_last_card_title), value._comment_rejected_cards)
         self.assertEqual(value._comment_open_article.call_count, 2)
         value._comment_article_top.assert_called_once_with(TITLE+'1', 0)
         value.tasker.controller.post_input_text.assert_not_called()

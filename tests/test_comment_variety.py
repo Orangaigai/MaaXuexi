@@ -97,7 +97,13 @@ class VarietyTests(unittest.TestCase):
         self.assertEqual(resolver._post.call_count,2)
 
     def test_batch_review_must_cover_all_candidates_without_falling_back_to_unreviewed_text(self):
-        resolver=Mock(model='offline')
-        resolver._post.side_effect=[response(dict(candidates=[DRAFT,DRAFT])),response(dict(reviews=[REVIEW]))]
-        engine=ContextCommentDrafts(resolver)
-        self.assertIsNone(engine.generate(ARTICLE));self.assertEqual(engine.last_error,'review_rejected')
+        for approved in (True, False):
+            with self.subTest(approved=approved):
+                resolver=Mock(model='offline')
+                resolver._post.side_effect=[response(dict(candidates=[DRAFT,DRAFT])),
+                    response(dict(reviews=[REVIEW])), response(dict(reviews=[dict(REVIEW, grounded=approved)]))]
+                result=ContextCommentDrafts(resolver).generate(ARTICLE)
+                self.assertEqual(result is not None, approved)
+                retry=json.loads(resolver._post.call_args.args[0]['messages'][1]['content'])
+                self.assertEqual([draft['comment'] for draft in retry['candidates']], [DRAFT['comment']])
+                self.assertEqual(resolver._post.call_count,3)

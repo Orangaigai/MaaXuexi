@@ -103,8 +103,23 @@ class DraftTests(unittest.TestCase):
 
     def test_reviewer_rejection_or_wrong_boolean_never_passes(self):
         for review in (dict(REVIEW,grounded=False),dict(REVIEW,within_scope='true'),{},None):
-            resolver=Mock(model='offline-model');resolver._post.side_effect=[response(DRAFT),response(review)]
+            resolver=Mock(model='offline-model');resolver._post.side_effect=[response(DRAFT),response(review),response(review)]
             self.assertIsNone(ContextCommentDrafts(resolver).generate(ARTICLE))
+
+    def test_empty_successful_generation_can_retry_once_but_http_errors_cannot(self):
+        resolver=Mock(model='offline-model', last_error=None)
+        empty=SimpleNamespace(status_code=200,json=lambda:dict(choices=[
+            dict(finish_reason='stop',message=dict(content=''))]))
+        resolver._post.side_effect=[empty,response(DRAFT),response(dict(reviews=[REVIEW]))]
+        self.assertIsNotNone(ContextCommentDrafts(resolver).generate(ARTICLE))
+        self.assertEqual(resolver._post.call_count,3)
+        resolver.reset_mock()
+        resolver.last_error='http_402'
+        resolver._post.side_effect=[SimpleNamespace(status_code=402)]
+        drafts=ContextCommentDrafts(resolver)
+        self.assertIsNone(drafts.generate(ARTICLE))
+        self.assertIn('http_402', drafts.rejection_summary())
+        resolver._post.assert_called_once()
 
     def test_invalid_generation_does_not_trigger_repeated_calls(self):
         resolver=Mock(model='offline-model');resolver._post.return_value=response(dict(DRAFT,comment='乱写。'))

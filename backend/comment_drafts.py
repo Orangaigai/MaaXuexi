@@ -29,6 +29,7 @@ RULES = (
     '不虚构个人经历、试用、身份或效果，不使用“我/我们”，不写口号、宣传、号召。'
     '只写科普中国/生活百科范围，不进行政治表态、时政或人物评价、投资建议、灾难预测。'
     '医疗内容只评价解释、证据和适用边界，不判断病情、预后、治疗、预防效果或某行为是否安全。'
+    '即使标题带有疗效措辞，也不重复它并附上期待或赞许；优先回应正文如何解释术语。'
     '不写处理步骤、剂量、时长、保证效果，不按谐音或字面曲解科学词。'
     '不写链接、数字、emoji或称谓；英文仅允许正文已有的常见缩写AI。'
     '只有标题、观看引导、加载提示、没有具体信息或无法遵守边界时跳过。'
@@ -42,6 +43,7 @@ REVIEW_RULES = (
     '口语、拟人和夸张也不能把这些条件抹掉；主题相同或引用正确不代表评论本身事实正确。'
     'topic_related：针对本篇。within_scope：仅授权科普/生活范围，无时政人物评价、口号、投资或医疗建议。'
     '医疗内容若判断病情、治疗、预后、预防或安全性，即使正文提到也不通过，只可评价解释和证据边界。'
+    '复述带有疗效措辞的标题，再评价“有盼头”“听着就放心”等，也算暗示疗效，不通过。'
     'neutral：温和、不煽动、不夸大；它不要求消除惊讶、趣味或欣赏。'
     'natural：像普通读者接话，不是知识说明、摘要、公文或硬拼专业词。'
     '贴着细节的一句小发现即可，不强求再加评价或感想；平铺定义和通用礼貌不算自然反应。'
@@ -51,7 +53,10 @@ REVIEW_RULES = (
     '每项输出上述六个真正布尔值、voice_score与specificity_score两个整数，'
     '另用reason给出不超过十八字的核对结论，指出关键事实条件是否相符。'
     '每项独立判断，不默认全部通过，也不把所有分数都填成同一个数字。'
-    '单条输入返回一个对象；输入candidates列表则返回{"reviews":[每条的核对对象]}，数量与顺序必须一致。'
+    '输入始终是candidates列表。输出固定为{"reviews":[{"grounded":true,"topic_related":true,'
+    '"neutral":true,"within_scope":true,"natural":true,"specific":true,"voice_score":4,'
+    '"specificity_score":4,"reason":"这里填写独立核对结论"}]}。'
+    '即使只有一条也要保留reviews数组；按实际输入逐项核对，数量与顺序必须一致，示例中的值不可照填。'
     '有疑虑为false；不改写，不批准公开发布。'
 )
 SENSITIVE_SOURCE = re.compile('习近平|总书记|党中央|政治|政策|党史|政党|战争|军事|宗教|民族冲突|选举|灾难预测|股票|投资建议|诊断|处方')
@@ -146,6 +151,8 @@ class ContextCommentDrafts:
         self.last_review = None
         self.last_candidates = []
         self.last_reviews = None
+        self._invalid_response = False
+        self._service_error = None
 
     def rejection_summary(self):
         """Explain the existing verdict; never changes approval or outputs raw drafts."""
@@ -182,19 +189,34 @@ class ContextCommentDrafts:
                     failures.append(f'候选{index}：'+ '、'.join(failed)+
                                     ('（'+reason[:60]+'）' if isinstance(reason, str) and reason else ''))
             return '；'.join(failures) or '模型复核结构与候选数量不符'
-        return '观点服务未正常返回：'+str(self.last_error)
+        return '观点服务未正常返回：'+str(self._service_error or self.last_error)
 
     def _ask(self, system, payload, *, temperature=0):
         self.request_count += 1
-        return response_json(self.resolver._post(dict(
+        response = self.resolver._post(dict(
             model=self.resolver.model, temperature=temperature, max_tokens=500,
             response_format=dict(type='json_object'), thinking=dict(type='disabled'),
             messages=[dict(role='system', content=system),
-                      dict(role='user', content=json.dumps(payload, ensure_ascii=False))]), time_limit=15))
+                      dict(role='user', content=json.dumps(payload, ensure_ascii=False))]), time_limit=15)
+        value = response_json(response)
+        self._invalid_response = response is not None and response.status_code == 200 and value is None
+        error = getattr(self.resolver, 'last_error', None)
+        self._service_error = error if isinstance(error, str) else None
+        return value
+
+    def _review(self, article, candidates):
+        review = self._ask(REVIEW_RULES, dict(title=article['title'], body=article['body'],
+                           candidates=[draft for _, draft in candidates]))
+        self.last_reviews = review
+        if review is None:
+            return None
+        reviews = review.get('reviews', [review] if len(candidates) == 1 else None)
+        return reviews if isinstance(reviews, list) and len(reviews) == len(candidates) else None
 
     def generate(self, article, *, recent_comments=None):
         self.last_result = None
         self.last_error = None
+        self._service_error = None
         self.last_candidate = None
         self.last_review = None
         self.last_candidates = []
@@ -203,9 +225,12 @@ class ContextCommentDrafts:
             self.last_error = 'article_outside_scope_or_incomplete'
             return None
         history = recent_texts(recent_comments)
-        value = self._ask(RULES, dict(title=article['title'], body=article['body'],
-                                     style_examples=STYLE_EXAMPLES,
-                                     recent_comments=history), temperature=.6)
+        payload = dict(title=article['title'], body=article['body'],
+                       style_examples=STYLE_EXAMPLES, recent_comments=history)
+        value = self._ask(RULES, payload, temperature=.6)
+        retried = self._invalid_response
+        if retried:
+            value = self._ask(RULES+' 确保content中只含完整JSON对象。', payload, temperature=.6)
         candidates = value.get('candidates', [value]) if isinstance(value, dict) else []
         self.last_candidates = candidates if isinstance(candidates, list) and len(candidates) <= 3 else []
         valid = [(raw, validate_draft(raw, article)) for raw in self.last_candidates]
@@ -215,21 +240,20 @@ class ContextCommentDrafts:
             self.last_error = 'draft_unavailable' if value is None else 'draft_failed_local_rules'
             return None
         self.last_candidate, draft = min(valid, key=lambda pair:repetition_score(pair[1]['comment'], history))
-        payload = dict(title=article['title'], body=article['body'])
-        payload.update(valid[0][1] if len(valid) == 1 else dict(candidates=[draft for _,draft in valid]))
-        review = self._ask(REVIEW_RULES, payload)
-        self.last_reviews = review
-        reviews = [review] if len(valid) == 1 else review.get('reviews') if isinstance(review,dict) else None
-        if not isinstance(reviews,list) or len(reviews) != len(valid):
-            self.last_review = review
-            self.last_error = 'review_unavailable' if review is None else 'review_rejected'
+        reviews = self._review(article, valid)
+        if reviews is None and not retried and (self.last_reviews is not None or self._invalid_response):
+            valid = [(self.last_candidate, draft)]
+            reviews = self._review(article, valid)
+        if reviews is None:
+            self.last_review = self.last_reviews
+            self.last_error = 'review_unavailable' if self.last_reviews is None else 'review_rejected'
             return None
         flags = ('grounded','topic_related','neutral','within_scope','natural','specific')
         approved = [(raw,draft,assessment) for (raw,draft),assessment in zip(valid,reviews)
                     if isinstance(assessment,dict) and all(assessment.get(key) is True for key in flags)]
         if not approved:
-            self.last_review = review
-            self.last_error = 'review_unavailable' if review is None else 'review_rejected'
+            self.last_review = self.last_reviews
+            self.last_error = 'review_rejected'
             return None
         self.last_candidate, draft, review = min(approved,key=lambda item:reviewed_quality(item,history))
         self.last_review = review
